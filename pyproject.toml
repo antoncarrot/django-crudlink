@@ -1,0 +1,32 @@
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "django-crudlink"
+version = "0.0.1"
+description = "A Django app (early development)."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "antoncarrot" }]
+requires-python = ">=3.10"
+dependencies = ["Django>=5.0"]
+classifiers = [
+    "Framework :: Django",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/antoncarrot/django-crudlink"
+Repository = "https://github.com/antoncarrot/django-crudlink"
+
+[tool.uv.build-backend]
+module-root = ""
