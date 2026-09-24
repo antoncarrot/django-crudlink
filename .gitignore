@@ -110,3 +110,6 @@ coverage
 # OS
 .DS_Store
 Thumbs.db
+
+# Built frontend assets (produced in CI by `npm run build:django`)
+django_crudlink/static/django_crudlink/
