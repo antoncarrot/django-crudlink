@@ -1,0 +1,49 @@
+name: Bug report
+description: Something doesn't work as documented
+labels:
+  - bug
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The viewset or view config and what you clicked. A minimal example helps most.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      value: |
+        - django-crudlink (PyPI):
+        - django-crudlink (npm, if you build the Vue sources yourself):
+        - Django:
+        - Python:
+        - Browser:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste tracebacks or browser console errors in a code block, or drop screenshots here.
