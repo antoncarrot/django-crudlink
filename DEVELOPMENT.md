@@ -18,6 +18,9 @@ independently:
 ├── .github/
 │   ├── workflows/publish.yml       # py-v* release → PyPI
 │   ├── workflows/publish-npm.yml   # npm-v* release → npm
+│   ├── ISSUE_TEMPLATE/             # issue forms: bug report, feature request
+│   ├── pull_request_template.md
+│   ├── release.yml                 # release notes categories, by PR label
 │   └── dependabot.yml
 ├── pyproject.toml              # Python package config + PyPI version
 ├── package.json                # JS project config + npm version
@@ -54,6 +57,29 @@ uv build               # → dist/*.whl, dist/*.tar.gz
 npm run build:npm      # JS build for the npm package (once defined)
 npm pack --dry-run     # list what would be published to npm
 ```
+
+## Issues and pull requests
+
+- One issue per change, one branch per issue, named `<issue number>-<slug>` (e.g. `2-github-templates`).
+  Create it from the issue: Development → Create a branch.
+- Write `Fixes #<issue number>` in the PR description. Merging the PR into `main` closes the issue.
+- Give every PR one type label. Release notes are grouped by **PR** labels (`.github/release.yml`),
+  not by the labels of the issue it fixes.
+
+| Label | Use for |
+| --- | --- |
+| `bug` | Type: something doesn't work as documented |
+| `enhancement` | Type: new feature or improvement |
+| `documentation` | Type: docs only |
+| `chore` | Type: CI, tooling, refactors; no user-visible change |
+| `dependencies` | Type: dependency updates. Dependabot sets it |
+| `breaking` | Added to the type label when public API or behaviour changes. Needs a minor bump while on `0.x` |
+| `accessibility` | Added to `bug` or `enhancement`: a barrier for people with disabilities |
+| `backend`, `frontend`, `github_actions` | Area: the Django package, the Vue sources / npm package, GitHub Actions. Dependabot sets `frontend` and `github_actions` on its PRs |
+| `good first issue`, `question` | GitHub's defaults |
+
+Close an issue you won't do as **Not planned**, and a duplicate as **Duplicate**. Pull requests have no
+close reasons: close them with a comment saying why (`Duplicate of #N` for a duplicate).
 
 ## Versioning
 
@@ -107,12 +133,14 @@ Always pass `--no-git-tag-version`. Without it, npm creates its own commit and a
    git commit -am "Release py-v0.0.2"
    git push
    ```
-3. Create a GitHub release, which triggers the publish workflow:
+3. Create a GitHub release, which triggers the publish workflow. Generate the notes from the
+   **previous tag with the same prefix** (`py-v*` or `npm-v*`); GitHub may suggest the other package's tag.
    ```bash
-   gh release create py-v0.0.2 --generate-notes     # PyPI
-   gh release create npm-v0.0.2 --generate-notes    # npm
+   gh release create py-v0.0.2 --generate-notes --notes-start-tag py-v0.0.1     # PyPI
+   gh release create npm-v0.0.2 --generate-notes --notes-start-tag npm-v0.0.1   # npm
    ```
-   Or in the GitHub UI: Releases → Draft a new release → choose tag → create new tag on `main` → Publish release.
+   Or in the GitHub UI: Releases → Draft a new release → choose tag → create new tag on `main` →
+   Previous tag → Generate release notes → Publish release.
 4. If the environment requires a reviewer: Actions → the run → Review deployments → Approve.
 5. Check https://pypi.org/project/django-crudlink/ or https://www.npmjs.com/package/django-crudlink.
 

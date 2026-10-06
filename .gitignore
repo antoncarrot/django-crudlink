@@ -113,3 +113,6 @@ Thumbs.db
 
 # Built frontend assets (produced in CI by `npm run build:django`)
 django_crudlink/static/django_crudlink/
+
+# Local plans (drafts of GitHub issues)
+/plans/
