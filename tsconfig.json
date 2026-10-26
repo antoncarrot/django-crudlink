@@ -1,0 +1,8 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "include": ["frontend/src/**/*.ts", "frontend/src/**/*.vue", "frontend/entries/*.ts"],
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "noEmit": true
+  }
+}

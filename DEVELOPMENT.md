@@ -42,21 +42,57 @@ What goes into each package:
 
 ## Setup
 
+Install the package in editable mode with the `dev` dependency group (pytest, pytest-django, ruff) into
+any virtualenv, inside or outside the project. Activate it first, then either:
+
 ```bash
-uv venv          # or use the existing venv/
-uv pip install -e .
+uv sync --active                 # uv: installs into the active venv instead of creating .venv
+pip install -e . --group dev     # pip >= 25.1
+```
+
+and
+
+```bash
 npm install
 ```
 
 ## Building locally
 
 ```bash
-npm run build:django   # JS build for Django static files (once defined)
+npm run type-check     # vue-tsc
+npm run build:django   # JS build for Django static files (crud + site bundles)
 uv build               # → dist/*.whl, dist/*.tar.gz
 
-npm run build:npm      # JS build for the npm package (once defined)
 npm pack --dry-run     # list what would be published to npm
 ```
+
+The npm package ships TypeScript and `.vue` sources (`exports` → `frontend/src/index.ts`),
+so it needs no build step. The consuming app's Vite compiles it.
+
+## Tests
+
+Tests use pytest-django with a minimal settings module, `django_crudlink/tests/settings.py`
+(SQLite in memory), configured in `[tool.pytest.ini_options]`. With the venv active:
+
+```bash
+make py-test        # pytest
+make py-lint        # ruff check
+make py-format      # ruff fix imports + ruff format
+make py-locale      # makemessages (en, ru) + compilemessages; commit the .po and .mo files
+make js-test        # npm test: vitest, happy-dom
+make js-lint        # npm run lint: Biome
+make js-format      # npm run format: Biome fixes + format
+make js-type-check  # npm run type-check: vue-tsc
+make js-build       # npm run build:django
+```
+
+Combined targets: `make format` (the default), `make lint`, `make test`, and `make check`, which runs
+everything CI runs (lint, type-check, tests, `build:django`).
+
+Frontend tests are `frontend/src/**/*.test.ts` (Vitest + `@vue/test-utils`). `@inertiajs/vue3` is replaced by
+`frontend/src/testing/inertia.ts` with `vi.mock('@inertiajs/vue3', () => import('.../testing/inertia'))`.
+
+`.github/workflows/tests.yml` runs ruff, Biome, pytest, vitest, type-check and `build:django` on every push to `main` and on pull requests.
 
 ## Issues and pull requests
 

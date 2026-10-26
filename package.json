@@ -1,7 +1,7 @@
 {
   "name": "django-crudlink",
   "version": "0.0.1",
-  "description": "JavaScript side of django-crudlink (early development).",
+  "description": "Vue 3 + Inertia.js frontend for django-crudlink: low-code CRUD pages for Django.",
   "license": "MIT",
   "author": "antoncarrot",
   "type": "module",
@@ -11,8 +11,48 @@
   },
   "homepage": "https://github.com/antoncarrot/django-crudlink",
   "bugs": "https://github.com/antoncarrot/django-crudlink/issues",
-  "keywords": ["django", "crud"],
-  "exports": "./frontend/index.js",
-  "files": ["frontend"],
-  "scripts": {}
+  "keywords": [
+    "django",
+    "crud",
+    "inertia",
+    "vue"
+  ],
+  "exports": {
+    ".": "./frontend/src/index.ts"
+  },
+  "files": [
+    "frontend",
+    "!frontend/**/*.test.ts",
+    "!frontend/src/testing"
+  ],
+  "scripts": {
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build:django": "vite build --mode crud && vite build --mode site",
+    "lint": "biome check",
+    "format": "biome check --write"
+  },
+  "peerDependencies": {
+    "@inertiajs/vue3": "^3.7.1",
+    "@openvue/themes": "^1.0.0",
+    "openvue": "^1.0.0",
+    "sass-embedded": "^1.105.0",
+    "vue": "^3.5.43"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.3",
+    "@inertiajs/vue3": "^3.7.1",
+    "@openvue/themes": "^1.0.0",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "@vue/test-utils": "^2.5.1",
+    "@vue/tsconfig": "^0.9.1",
+    "happy-dom": "^21.0.4",
+    "openvue": "^1.0.0",
+    "sass-embedded": "^1.105.0",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "vue": "^3.5.43",
+    "vue-tsc": "^3.3.11"
+  }
 }

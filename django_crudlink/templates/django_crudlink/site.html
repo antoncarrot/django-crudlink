@@ -1,0 +1,13 @@
+{% load crudlink %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% crudlink_site_title %}</title>
+    {% crudlink_assets "site" %}
+  </head>
+  <body style="margin: 0">
+    {% crudlink_root %}
+  </body>
+</html>

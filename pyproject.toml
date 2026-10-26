@@ -5,20 +5,20 @@ build-backend = "uv_build"
 [project]
 name = "django-crudlink"
 version = "0.0.1"
-description = "A Django app (early development)."
+description = "Low-code CRUD views for Django rendered with Inertia.js + Vue"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "antoncarrot" }]
-requires-python = ">=3.10"
-dependencies = ["Django>=5.0"]
+requires-python = ">=3.11"
+dependencies = [
+    "Django>=5.2",
+    "inertia-django>=2.0.0",
+]
 classifiers = [
     "Framework :: Django",
-    "Framework :: Django :: 5.0",
-    "Framework :: Django :: 5.1",
     "Framework :: Django :: 5.2",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -28,5 +28,57 @@ classifiers = [
 Homepage = "https://github.com/antoncarrot/django-crudlink"
 Repository = "https://github.com/antoncarrot/django-crudlink"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-django>=4.14",
+    "ruff>=0.16",
+]
+
 [tool.uv.build-backend]
 module-root = ""
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "django_crudlink.tests.settings"
+django_find_project = false
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ANN", # flake8-annotations
+    "COM", # flake8-commas
+    "CPY", # flake8-copyright
+    "C90", # mccabe complexity
+    "EXE", # flake8-executable
+    "EM",  # flake8-errmsg
+    "T10", # debugger
+    "TID", # flake8-tidy-imports
+    "TD",  # flake8-todos
+    "FIX", # flake8-fixme
+    "FA",  # flake8-future-annotations
+    "ERA", # eradicate
+    "D10",   # missing pydoc
+    "E402",   # false positives for local imports
+    "E501",   # line too long
+    "TRY003", # external messages in exceptions are too verbose
+    "UP006",
+    "PLR0913",
+    "SLF001",
+    "F403",
+    "ARG002",
+    "SIM108",
+    "B009",
+    "S101",
+    "RUF012",
+    "BLE001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["PT009"]  # django TestCase assertions
