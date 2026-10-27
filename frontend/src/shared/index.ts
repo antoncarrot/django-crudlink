@@ -1,2 +1,5 @@
-// Contract between backend and frontend: page props. Mirrors django_crudlink/shared/.
+// Contract between backend and frontend: page props, component names and url params.
+// Mirrors django_crudlink/shared/.
+export * from './components'
+export * from './params'
 export type * from './props'
