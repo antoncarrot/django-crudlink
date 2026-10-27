@@ -3,8 +3,11 @@ import Material from '@openvue/themes/material'
 import OpenVue from 'openvue/config'
 import { type Component, createApp, type DefineComponent, h } from 'vue'
 
+import BaseListPage from './pages/BaseListPage.vue'
+import { PageComponent } from './shared'
+
 export interface CrudlinkAppOptions {
-  /** Resolve project pages. */
+  /** Resolve project pages. Crudlink pages (BaseListPage, ...) are resolved first. */
   resolve?: (name: string) => DefineComponent | undefined
   /** Persistent layout wrapping every page (full site mode). */
   layout?: Component
@@ -40,12 +43,19 @@ const themeOptions = {
   darkModeSelector: '.crudlink-dark',
 }
 
+/** Backend views render these by `PageComponent` name. */
+const crudPages: Record<string, Component> = {
+  [PageComponent.List]: BaseListPage,
+}
+
 export function createCrudlinkApp(options: CrudlinkAppOptions = {}): Promise<void> {
   return createInertiaApp({
     id: options.id ?? readRootId(),
     layout: options.layout ? () => options.layout : undefined,
     resolve: (name) => {
-      const page = options.resolve?.(name)
+      // own keys only, so a project page named like an Object.prototype member ("toString") reaches options.resolve
+      const crudPage = Object.hasOwn(crudPages, name) ? (crudPages[name] as DefineComponent) : undefined
+      const page = crudPage ?? options.resolve?.(name)
       if (!page) {
         throw new Error(`Inertia page not found: ${name}`)
       }

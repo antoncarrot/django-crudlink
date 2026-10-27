@@ -98,8 +98,13 @@ class ViewsTest(TestCase):
         self.assertEqual(view.get_data(view.get_data_attrs()).pagination.page, 1)
 
     def test_list_ordering(self) -> None:
-        # a column without order_field is only sent back, the frontend sorts it
-        self.assertEqual(table_data(self.client.get("/users/?o=-groups", **DATA))["ordering"], "-groups")
+        # the sort column is only sent back, the frontend sorts. The rows come in the same order
+        # whatever it is, so equal values stay in the same order after a click and after a reload
+        default = [row["pk"] for row in table_data(self.client.get("/users/", **DATA))["rows"]]
+        for key in ("username", "-username", "-groups"):
+            data = table_data(self.client.get(f"/users/?o={key}", **DATA))
+            self.assertEqual(data["ordering"], key)
+            self.assertEqual([row["pk"] for row in data["rows"]], default, key)
         # unknown columns and extra keys are ignored: one sort column only
         self.assertIsNone(table_data(self.client.get("/users/?o=bogus", **DATA))["ordering"])
         self.assertIsNone(table_data(self.client.get("/users/?o=username,email", **DATA))["ordering"])

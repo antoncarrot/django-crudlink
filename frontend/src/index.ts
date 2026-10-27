@@ -1,4 +1,7 @@
 export { type CrudlinkAppOptions, createCrudlinkApp } from './app'
+export { default as BaseList } from './components/BaseList.vue'
 export { default as CrudPage } from './components/CrudPage.vue'
+export { useInertiaListUrl } from './composables/useInertiaListUrl'
 export { default as SiteLayout } from './layouts/SiteLayout.vue'
 export * from './shared'
+export type * from './types'

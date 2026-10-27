@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['frontend/src/**/*.test.ts'],
+    // restoreMocks only undoes vi.spyOn(); clearMocks also empties the calls of shared vi.fn() mocks
+    // (the testing/inertia router), so a test doesn't see the calls of the one before
+    clearMocks: true,
     restoreMocks: true,
     unstubGlobals: true,
   },
