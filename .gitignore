@@ -115,3 +115,6 @@ django_crudlink/static/django_crudlink/
 
 # Local plans (drafts of GitHub issues)
 /plans/
+
+# Machine-specific agent notes for this checkout
+/AGENTS_LOCAL.md

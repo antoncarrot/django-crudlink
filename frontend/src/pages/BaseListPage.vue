@@ -4,13 +4,13 @@ import CrudPage from '../components/CrudPage.vue'
 import { useInertiaListUrl } from '../composables/useInertiaListUrl'
 import type { ListProps } from '../shared'
 
-defineProps<ListProps>()
+const props = defineProps<ListProps>()
 
-const { onChange } = useInertiaListUrl()
+const { loading, onChange } = useInertiaListUrl(() => props.hugeTable)
 </script>
 
 <template>
   <CrudPage :title="title">
-    <BaseList :columns :data @change="onChange" />
+    <BaseList :columns :data :huge-table :loading @change="onChange" />
   </CrudPage>
 </template>

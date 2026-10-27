@@ -23,14 +23,17 @@ class DataAttr(Protocol):
 class ModelField:
     """Value of a model field. Choices are displayed, relations returned as objects (lists of them).
 
-    Only concrete, single-valued fields are sorted by: not M2M.
+    `order_field` is what the server list modes sort by in the database: the field itself when it
+    sorts as shown. Relations (shown as their str()) and choices (shown as their labels) have none;
+    a computed column can name a field that sorts as shown, e.g. `author__name`.
     """
 
     def __init__(self, name: str, field: Field) -> None:
         self.name = name
         self.field = field
         self.label = str(field.verbose_name)
-        self.order_field: str | None = name if field.concrete and not field.many_to_many else None
+        sorts_as_shown = field.concrete and not field.is_relation and not field.choices
+        self.order_field: str | None = name if sorts_as_shown else None
 
     def get_value(self, obj: Model) -> Any:
         if self.field.many_to_many:
