@@ -25,14 +25,15 @@ export type PlainValue = string | number | boolean | null
 export interface RowData {
   pk: string
   cells: Record<string, Cell>
-  /** Column name -> plain value the frontend sorts (and later filters) by. */
-  values: Record<string, PlainValue>
+  /** Column name -> plain value the frontend sorts (and later filters) by; null when the backend does it. */
+  values: Record<string, PlainValue> | null
 }
 
 export interface Pagination {
   page: number
   pageSize: number
-  total: number
+  /** null when the rows are not counted (`ListMode.SERVER_UNCOUNTED`). */
+  total: number | null
   hasNext: boolean
 }
 
@@ -49,6 +50,11 @@ export interface ListProps {
   columns: ColumnSchema[]
   /** Deferred: undefined until Inertia loads it, right after the first render. */
   data?: ListData
+  /**
+   * false - all rows are sent, the frontend sorts and pages; true - the backend does (a server `ListMode`),
+   * the table reloads `data`.
+   */
+  hugeTable: boolean
 }
 
 // Every page

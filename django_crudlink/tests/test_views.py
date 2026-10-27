@@ -3,14 +3,17 @@ from typing import Any
 from unittest import mock
 
 from django.contrib.auth.models import Group, Permission, User
+from django.db import connection, models
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
 from django.utils import translation
 from django.utils.translation import gettext_lazy
 
+from django_crudlink.helpers.columns import ModelField
 from django_crudlink.shared import PageComponent
-from django_crudlink.views import ListModelView
+from django_crudlink.views import ListMode, ListModelView
 
 INERTIA = {"HTTP_X_INERTIA": "true"}
 # the deferred `data` prop of a list page, as Inertia loads it right after the first render
@@ -68,6 +71,7 @@ class ViewsTest(TestCase):
         self.assertEqual(props["columns"][0]["label"], "Username")
         # the frontend sorts: every column is sortable, "groups" (M2M) too
         self.assertTrue(all(column["sortable"] for column in props["columns"]))
+        self.assertFalse(props["hugeTable"])
         data = table_data(self.client.get("/users/?o=-username", **DATA))
         self.assertEqual(data["ordering"], "-username")
         self.assertEqual([row["cells"]["username"]["props"]["text"] for row in data["rows"]], ["bob", "admin"])
@@ -89,13 +93,86 @@ class ViewsTest(TestCase):
         self.assertEqual(len(data["rows"]), 32)
         self.assertEqual(table_data(self.client.get("/users/?page=9", **DATA))["pagination"]["page"], 2)
         self.assertEqual(table_data(self.client.get("/users/?page=x", **DATA))["pagination"]["page"], 1)
-        # no paging, as in Django's ListView: all rows on one page
-        for paginate_by in (None, 0):
-            view = list_view(self.admin, "/?page=3", model=User, paginate_by=paginate_by)
-            pagination = view.get_data(view.get_data_attrs()).pagination
-            self.assertEqual((pagination.page, pagination.page_size, pagination.has_next), (1, 32, False))
+        # no paging, as in Django's ListView: all rows on one page, in every mode
+        for list_mode in ListMode:
+            for paginate_by in (None, 0):
+                view = list_view(self.admin, "/?page=3", model=User, paginate_by=paginate_by, list_mode=list_mode)
+                pagination = view.get_data(view.get_data_attrs()).pagination
+                self.assertEqual(
+                    (pagination.page, pagination.page_size, pagination.has_next), (1, 32, False), list_mode
+                )
         view = list_view(self.admin, model=Group, queryset=Group.objects.none(), paginate_by=None)
         self.assertEqual(view.get_data(view.get_data_attrs()).pagination.page, 1)
+
+    def test_server_mode(self) -> None:
+        User.objects.bulk_create([User(username=f"user{i:02}") for i in range(30)])
+        props = page(self.client.get("/server-users/?page=2&o=username", **INERTIA))["props"]
+        self.assertTrue(props["hugeTable"])
+        # the database sorts: only columns with an order_field, not "groups" (M2M)
+        self.assertEqual([column["sortable"] for column in props["columns"]], [True, True, False])
+        with CaptureQueriesContext(connection) as queries:
+            data = table_data(self.client.get("/server-users/?page=2&o=username", **DATA))
+        self.assertEqual(len([query for query in queries if "COUNT(" in query["sql"]]), 1)
+        # one page, sorted by the database: admin, bob, user00, ...
+        self.assertEqual(data["pagination"], {"page": 2, "pageSize": 25, "total": 32, "hasNext": False})
+        self.assertEqual(
+            [row["cells"]["username"]["props"]["text"] for row in data["rows"]], [f"user{i}" for i in range(23, 30)]
+        )
+        self.assertIsNone(data["rows"][0]["values"])
+        self.assertEqual(data["ordering"], "username")
+        # the page number is clamped
+        self.assertEqual(table_data(self.client.get("/server-users/?page=9", **DATA))["pagination"]["page"], 2)
+        # the backend can't sort by groups (no order_field): dropped in the server modes
+        self.assertIsNone(table_data(self.client.get("/server-users/?o=-groups", **DATA))["ordering"])
+        # a descending order_field is flipped for a descending sort key
+        joined = mock.Mock(order_field="-date_joined")
+        for key, order_by in (("joined", ["-date_joined", "pk"]), ("-joined", ["date_joined", "pk"])):
+            view = list_view(self.admin, f"/?o={key}", model=User, list_mode=ListMode.SERVER)
+            self.assertEqual(view.get_ordering({"joined": joined}, User.objects.all()), (key, order_by))
+        # the database sorts only columns that sort as shown: not relations (their str()) or choices (labels)
+        view = list_view(
+            self.admin, model=Permission, list_display=("codename", "content_type"), list_mode=ListMode.SERVER
+        )
+        self.assertEqual([column.sortable for column in view.get_props().columns], [True, False])
+        status = models.CharField(choices=[("a", "Zeta"), ("b", "Alpha")])
+        status.set_attributes_from_name("status")
+        self.assertIsNone(ModelField("status", status).order_field)
+        # a plain string works as list_mode too
+        view = list_view(self.admin, model=User, list_mode="server_uncounted")
+        self.assertTrue(view.get_props().huge_table)
+        self.assertIsNone(view.get_data(view.get_data_attrs()).pagination.total)
+
+    def test_server_mode_uncounted(self) -> None:
+        User.objects.bulk_create([User(username=f"user{i:02}") for i in range(30)])
+        with CaptureQueriesContext(connection) as queries:
+            data = table_data(self.client.get("/uncounted-users/?o=username", **DATA))
+        # no COUNT(*): one extra row tells whether there is a next page
+        self.assertFalse([query["sql"] for query in queries if "COUNT(" in query["sql"]])
+        self.assertEqual(data["pagination"], {"page": 1, "pageSize": 25, "total": None, "hasNext": True})
+        self.assertEqual(len(data["rows"]), 25)
+        data = table_data(self.client.get("/uncounted-users/?o=username&page=2", **DATA))
+        self.assertEqual(data["pagination"], {"page": 2, "pageSize": 25, "total": None, "hasNext": False})
+        self.assertEqual(len(data["rows"]), 7)
+        # without a count, a page past the end is empty; a huge one is capped, so the offset fits the database
+        data = table_data(self.client.get(f"/uncounted-users/?page={10**30}", **DATA))
+        self.assertEqual(
+            data["pagination"], {"page": (2**63 - 2) // 25, "pageSize": 25, "total": None, "hasNext": False}
+        )
+        self.assertEqual(data["rows"], [])
+
+    def test_list_data_request(self) -> None:
+        User.objects.bulk_create([User(username=f"user{i:02}") for i in range(30)])
+        # a partial reload answers with the requested `data` prop only
+        props = page(self.client.get("/server-users/?page=2&o=-username", **DATA))["props"]
+        self.assertNotIn("title", props)
+        data = props["data"]
+        self.assertEqual(set(data), {"rows", "pagination", "ordering"})
+        self.assertEqual(data["pagination"], {"page": 2, "pageSize": 25, "total": 32, "hasNext": False})
+        self.assertEqual(data["ordering"], "-username")
+        self.assertEqual(data["rows"][-1]["cells"]["username"]["props"]["text"], "admin")
+        # the same permission check as the page; the login check is in test_login_required
+        self.client.force_login(User.objects.create_user("nobody"))
+        self.assertEqual(self.client.get("/server-users/", **DATA).status_code, 403)
 
     def test_list_ordering(self) -> None:
         # the sort column is only sent back, the frontend sorts. The rows come in the same order

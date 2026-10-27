@@ -76,14 +76,15 @@ PlainValue = str | int | float | bool | None
 class RowData(CamelCaseJSON):
     pk: str
     cells: dict[str, Cell]
-    values: dict[str, PlainValue]  # column name -> plain value the frontend sorts (and later filters) by
+    # column name -> plain value the frontend sorts (and later filters) by; None when the backend does it
+    values: dict[str, PlainValue] | None
 
 
 @dataclass
 class Pagination(CamelCaseJSON):
     page: int
     page_size: int
-    total: int
+    total: int | None  # None when the rows are not counted (`ListMode.SERVER_UNCOUNTED`)
     has_next: bool
 
 
@@ -101,6 +102,9 @@ class ListProps(CamelCaseJSON):
     title: str
     columns: list[ColumnSchema]
     data: ListData | DeferredProp  # deferred: loaded right after the first render
+    # False - all rows are sent, the frontend sorts and pages; True - the backend does (a server `ListMode`),
+    # the table reloads `data`
+    huge_table: bool
 
 
 # Every page

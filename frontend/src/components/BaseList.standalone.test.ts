@@ -17,18 +17,19 @@ describe('BaseList without Inertia', () => {
             {
               pk: '1',
               cells: { name: { component: CellComponent.Text, props: { text: 'bob' } } },
-              values: { name: 'bob' },
+              values: null,
             },
           ],
           pagination: { page: 1, pageSize: 25, total: 1, hasNext: false },
           ordering: null,
         },
+        hugeTable: true,
       },
       global: { plugins: [[OpenVue, { unstyled: true }]] },
     })
     expect(wrapper.get('tbody td').text()).toBe('bob')
 
-    wrapper.getComponent(DataTable).vm.$emit('sort', { sortField: 'values.name', sortOrder: 1 })
+    wrapper.getComponent(DataTable).vm.$emit('sort', { sortField: 'name', sortOrder: 1 })
     expect(wrapper.emitted('change')).toEqual([[{ page: 1, ordering: 'name' }]])
   })
 })

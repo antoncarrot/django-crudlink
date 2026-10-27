@@ -9,4 +9,9 @@ export interface ListState {
 }
 
 /** Props of the `BaseList` table: the list page props without the page chrome. */
-export interface BaseListProps extends Pick<ListProps, 'columns' | 'data'> {}
+export interface BaseListProps extends Pick<ListProps, 'columns' | 'data'> {
+  /** The backend sorts and pages (`ListProps.hugeTable`). Default false. */
+  hugeTable?: boolean
+  /** A reload of `data` is running (huge table). */
+  loading?: boolean
+}
