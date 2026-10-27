@@ -65,8 +65,8 @@ class CrudViewMixin(LoginRequiredMixin):
         return self.access.get_queryset(self.request)
 
     def get_data_attr(self, name: str) -> DataAttr:
-        """Resolve a list column name: model field, model attribute."""
-        return get_data_attr(self.get_model(), name)
+        """Resolve a list column name: model field, `@column` method of the view, model attribute."""
+        return get_data_attr(self.get_model(), name, [self])
 
     # Urls
 
@@ -89,7 +89,12 @@ class CrudViewMixin(LoginRequiredMixin):
         return cells.to_text(value, self.empty_value_display)
 
     def get_cell(self, obj: Model, attr: DataAttr, value: Any) -> Cell:
-        """Choose the frontend cell of a list column: a built-in cell for the type of the value."""
+        """Choose the frontend cell of a list column: its `component`, else a built-in cell for the type of the value.
+
+        An empty value is `empty_value_display` in a text cell, whatever the component.
+        """
+        if attr.component and not cells.is_empty(value):
+            return Cell(attr.component, {"value": cells.to_cell_value(value)})
         return cells.to_cell(value, self.empty_value_display)
 
     def handle_no_permission(self) -> HttpResponse:

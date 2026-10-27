@@ -9,9 +9,14 @@ from django.utils import formats, timezone
 from ..shared import Cell, PlainValue
 
 
+def is_empty(value: Any) -> bool:
+    """Whether a value is shown as the empty value display: `None` and `""`."""
+    return value is None or value == ""
+
+
 def to_text(value: Any, empty: str) -> str:
     """Localized text of a value, `empty` for `None` and `""`."""
-    if value is None or value == "":
+    if is_empty(value):
         return empty
     if isinstance(value, datetime.datetime) and timezone.is_aware(value):
         value = timezone.localtime(value)
@@ -46,3 +51,10 @@ def to_plain_value(value: Any) -> PlainValue:
     if isinstance(value, (list, tuple)):
         return ", ".join(str(item) for item in value)
     return str(value)
+
+
+def to_cell_value(value: Any) -> PlainValue | list[PlainValue]:
+    """Return the `value` prop of a custom cell: the plain value the frontend sorts by, a list stays a list of them."""
+    if isinstance(value, (list, tuple)):
+        return [to_plain_value(item) for item in value]
+    return to_plain_value(value)
