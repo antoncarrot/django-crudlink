@@ -56,26 +56,18 @@ class ListModelView(CrudViewMixin, View):
     def get_ordering(self, data_attrs: dict[str, DataAttr], queryset: QuerySet) -> tuple[str | None, list[Any]]:
         """Return (the requested sort key sent back to the page, queryset order_by).
 
-        Any listed column is kept as the sort key, the frontend sorts by it. A column with
-        an `order_field` is sorted by the database too. Without one, or without a sort column:
-        `ordering`, else the queryset's own order (an `order_by()` in `get_queryset()`, or the
-        model's `Meta.ordering`).
+        Any listed column is kept as the sort key, the frontend sorts by it. The rows come in the
+        same order whatever the sort key: `ordering`, else the queryset's own order (an `order_by()`
+        in `get_queryset()`, or the model's `Meta.ordering`). The frontend sort keeps that order for
+        equal values, so a page shows the same rows after a click on a column and after a reload.
         """
         key = self.request.GET.get(ListParam.ORDERING, "")
-        attr = data_attrs.get(key.removeprefix("-")) if key else None
-        order_by: list[Any] = []
-        if attr is None:
+        if key.removeprefix("-") not in data_attrs:
             key = ""
-        elif attr.order_field is not None:
-            field = attr.order_field
-            if key.startswith("-"):
-                field = field.removeprefix("-") if field.startswith("-") else f"-{field}"
-            order_by.append(field)
-        if not order_by:
-            query = queryset.query
-            default = query.get_meta().ordering if query.default_ordering else ()
-            order_by = list(self.ordering or query.order_by or default)
-        # stable order for pagination; every Django model has a pk
+        query = queryset.query
+        default = query.get_meta().ordering if query.default_ordering else ()
+        order_by = list(self.ordering or query.order_by or default)
+        # a fixed order for pages and equal values; every Django model has a pk
         if "pk" not in order_by and "-pk" not in order_by:
             order_by.append("-pk" if not order_by else "pk")
         return key or None, order_by
