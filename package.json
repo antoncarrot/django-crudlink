@@ -33,26 +33,26 @@
     "format": "biome check --write"
   },
   "peerDependencies": {
-    "@inertiajs/vue3": "^3.7.1",
+    "@inertiajs/vue3": "^3.9.1",
     "@openvue/themes": "^1.0.0",
     "openvue": "^1.0.0",
-    "sass-embedded": "^1.105.0",
-    "vue": "^3.5.43"
+    "sass-embedded": "^1.106.1",
+    "vue": "^3.5.44"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.3",
-    "@inertiajs/vue3": "^3.7.1",
+    "@inertiajs/vue3": "^3.9.1",
     "@openvue/themes": "^1.0.0",
-    "@vitejs/plugin-vue": "^6.0.9",
+    "@vitejs/plugin-vue": "^6.0.10",
     "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.9.1",
     "happy-dom": "^21.0.4",
     "openvue": "^1.0.0",
-    "sass-embedded": "^1.105.0",
-    "typescript": "~6.0.3",
+    "sass-embedded": "^1.106.1",
+    "typescript": "~7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.1",
-    "vue": "^3.5.43",
-    "vue-tsc": "^3.3.11"
+    "vue": "^3.5.44",
+    "vue-tsc": "^3.3.13"
   }
 }
