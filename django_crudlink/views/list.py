@@ -12,7 +12,7 @@ from inertia import defer
 
 from ..helpers.cells import to_plain_value
 from ..helpers.columns import DataAttr
-from ..shared import ColumnSchema, ListData, ListParam, ListProps, PageComponent, Pagination, RowData
+from ..shared import Cell, ColumnSchema, ListData, ListParam, ListProps, PageComponent, Pagination, RowData
 from .base import CrudViewMixin
 
 
@@ -83,16 +83,24 @@ class ListModelView(CrudViewMixin, View):
     The rows come in the deferred `data` prop, loaded right after the first render.
     `list_mode` decides who sorts and pages them, see `ListMode`. With the server
     modes the table reloads `data` for each page (an Inertia partial reload of the same url).
+
+    The `list_display_links` columns link to the detail page, when a `detail` url is mounted next to the list.
     """
 
     component = PageComponent.LIST
     list_display: Sequence[str] = ("__str__",)
+    list_display_links: Sequence[str] | None = None  # columns linked to the detail page; None - first, () - none
     ordering: Sequence[str] | None = None
     paginate_by: int | None = 25  # None or 0 - no paging, all rows on one page (in every list_mode)
     list_mode: ListMode | str = ListMode.CLIENT  # a plain string ("server") works too
 
     def get_list_display(self) -> Sequence[str]:
         return self.list_display
+
+    def get_list_display_links(self) -> Sequence[str]:
+        if self.list_display_links is None:
+            return self.get_list_display()[:1]
+        return self.list_display_links
 
     def get_list_mode(self) -> ListMode:
         return ListMode(self.list_mode)
@@ -133,6 +141,18 @@ class ListModelView(CrudViewMixin, View):
         if "pk" not in order_by and "-pk" not in order_by:
             order_by.append("-pk" if not order_by else "pk")
         return key or None, order_by
+
+    def get_item_url(self, obj: Model) -> str | None:
+        """Url the link columns of a row go to: the detail page, None if it isn't mounted."""
+        return self.reverse("detail", obj.pk)
+
+    def get_cell(self, obj: Model, attr: DataAttr, value: Any) -> Cell:
+        """Link columns (`list_display_links`) link to `get_item_url(obj)`, a column with a `component` never does."""
+        if not attr.component and attr.name in self.get_list_display_links():
+            url = self.get_item_url(obj)
+            if url is not None:
+                return Cell.link(self.to_text(value), url)
+        return super().get_cell(obj, attr, value)
 
     def get_rows(self, objects: Sequence[Model], data_attrs: dict[str, DataAttr]) -> list[RowData]:
         rows = []
