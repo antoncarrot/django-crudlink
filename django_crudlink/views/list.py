@@ -109,7 +109,7 @@ class ListModelView(CrudViewMixin, View):
         """Return (the requested sort key sent back to the page, queryset order_by).
 
         In the server modes the database sorts by the column's `order_field`. A column without
-        one (relations, choices, computed) can't be sorted there, so its key is dropped.
+        one (relations, choices, a `@column` that names none) can't be sorted there, so its key is dropped.
 
         `CLIENT` keeps any listed column as the sort key, the frontend sorts by it. The rows come
         in the base order whatever the sort key. The frontend sort keeps that order for equal
@@ -179,7 +179,7 @@ class ListModelView(CrudViewMixin, View):
                     name=name,
                     label=capfirst(attr.label),
                     # the frontend sorts any column, by its plain value; the database only those with
-                    # an order_field, which model fields have when they sort as shown
+                    # an order_field: model fields that sort as shown, `@column`s that name one
                     sortable=not self.is_server_side or attr.order_field is not None,
                 )
                 for name, attr in data_attrs.items()

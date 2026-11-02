@@ -4,9 +4,10 @@ import OpenVue from 'openvue/config'
 import { type Component, createApp, type DefineComponent, h } from 'vue'
 
 import BaseListPage from './pages/BaseListPage.vue'
+import { type CrudlinkRegistryOptions, crudlinkRegistry } from './registry'
 import { PageComponent } from './shared'
 
-export interface CrudlinkAppOptions {
+export interface CrudlinkAppOptions extends CrudlinkRegistryOptions {
   /** Resolve project pages. Crudlink pages (BaseListPage, ...) are resolved first. */
   resolve?: (name: string) => DefineComponent | undefined
   /** Persistent layout wrapping every page (full site mode). */
@@ -65,6 +66,7 @@ export function createCrudlinkApp(options: CrudlinkAppOptions = {}): Promise<voi
       createApp({ render: () => h(App, props) })
         .use(plugin)
         .use(OpenVue, { theme: { preset: Material, options: themeOptions } })
+        .use(crudlinkRegistry(options))
         .mount(el)
     },
   })

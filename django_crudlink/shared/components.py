@@ -1,6 +1,7 @@
 """Names of frontend components. Mirrored in `frontend/src/shared/components.ts`.
 
-Values are sent to the frontend as plain strings (`StrEnum`).
+Values are sent to the frontend as plain strings (`StrEnum`). Custom cells registered
+on the frontend (`createCrudlinkApp({ cells })`) are used by their string name too.
 """
 
 from enum import StrEnum

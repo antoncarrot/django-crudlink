@@ -1,3 +1,6 @@
+import datetime
+import decimal
+import functools
 import json
 from typing import Any
 from unittest import mock
@@ -9,10 +12,12 @@ from django.test import RequestFactory, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
 from django.utils import translation
+from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy
 
-from django_crudlink.helpers.columns import ModelField
-from django_crudlink.shared import PageComponent
+from django_crudlink import column
+from django_crudlink.helpers.columns import ModelField, get_data_attr
+from django_crudlink.shared import Cell, PageComponent
 from django_crudlink.views import ListMode, ListModelView
 
 INERTIA = {"HTTP_X_INERTIA": "true"}
@@ -61,28 +66,35 @@ class ViewsTest(TestCase):
     def test_list(self) -> None:
         # rows are deferred: the first render runs no row query (session + user only)
         with self.assertNumQueries(2):
-            response = page(self.client.get("/users/?o=-username", **INERTIA))
+            response = page(self.client.get("/users/?o=-full_name", **INERTIA))
         self.assertEqual(response["component"], "BaseListPage")
         self.assertEqual(response["deferredProps"], {"default": ["data"]})
         props = response["props"]
         self.assertNotIn("data", props)
         self.assertEqual(props["title"], "Users")
-        self.assertEqual([c["name"] for c in props["columns"]], ["username", "email", "is_staff", "groups"])
+        self.assertEqual(
+            [c["name"] for c in props["columns"]], ["username", "email", "full_name", "is_staff", "groups"]
+        )
         self.assertEqual(props["columns"][0]["label"], "Username")
+        # the @column of the view
+        self.assertEqual(props["columns"][2]["label"], "Full name")
         # the frontend sorts: every column is sortable, "groups" (M2M) too
         self.assertTrue(all(column["sortable"] for column in props["columns"]))
         self.assertFalse(props["hugeTable"])
-        data = table_data(self.client.get("/users/?o=-username", **DATA))
-        self.assertEqual(data["ordering"], "-username")
+        data = table_data(self.client.get("/users/?o=-full_name", **DATA))
+        self.assertEqual(data["ordering"], "-full_name")
+        # the sort key is only sent back: the rows come in the base order, -pk
         self.assertEqual([row["cells"]["username"]["props"]["text"] for row in data["rows"]], ["bob", "admin"])
         bob = data["rows"][0]["cells"]
         self.assertEqual(bob["username"], {"component": "text", "props": {"text": "bob"}})
         self.assertEqual(bob["email"], {"component": "text", "props": {"text": "—"}})
+        self.assertEqual(bob["full_name"], {"component": "text", "props": {"text": "Bob Zed"}})
         self.assertEqual(bob["is_staff"], {"component": "bool", "props": {"value": False}})
         self.assertEqual(bob["groups"], {"component": "tags", "props": {"items": ["staff"]}})
         # plain values the frontend sorts by
         self.assertEqual(
-            data["rows"][0]["values"], {"username": "bob", "email": "", "is_staff": False, "groups": "staff"}
+            data["rows"][0]["values"],
+            {"username": "bob", "email": "", "full_name": "Bob Zed", "is_staff": False, "groups": "staff"},
         )
 
     def test_list_pagination(self) -> None:
@@ -108,8 +120,8 @@ class ViewsTest(TestCase):
         User.objects.bulk_create([User(username=f"user{i:02}") for i in range(30)])
         props = page(self.client.get("/server-users/?page=2&o=username", **INERTIA))["props"]
         self.assertTrue(props["hugeTable"])
-        # the database sorts: only columns with an order_field, not "groups" (M2M)
-        self.assertEqual([column["sortable"] for column in props["columns"]], [True, True, False])
+        # the database sorts: only columns with an order_field, "full_name" (its @column names one), not "groups" (M2M)
+        self.assertEqual([column["sortable"] for column in props["columns"]], [True, True, True, False])
         with CaptureQueriesContext(connection) as queries:
             data = table_data(self.client.get("/server-users/?page=2&o=username", **DATA))
         self.assertEqual(len([query for query in queries if "COUNT(" in query["sql"]]), 1)
@@ -124,6 +136,12 @@ class ViewsTest(TestCase):
         self.assertEqual(table_data(self.client.get("/server-users/?page=9", **DATA))["pagination"]["page"], 2)
         # the backend can't sort by groups (no order_field): dropped in the server modes
         self.assertIsNone(table_data(self.client.get("/server-users/?o=-groups", **DATA))["ordering"])
+        # a @column sorts by its order_field: -last_name, the pk for equal ones
+        data = table_data(self.client.get("/server-users/?o=-full_name", **DATA))
+        self.assertEqual(data["ordering"], "-full_name")
+        self.assertEqual(
+            [row["cells"]["username"]["props"]["text"] for row in data["rows"][:3]], ["bob", "admin", "user00"]
+        )
         # a descending order_field is flipped for a descending sort key
         joined = mock.Mock(order_field="-date_joined")
         for key, order_by in (("joined", ["-date_joined", "pk"]), ("-joined", ["date_joined", "pk"])):
@@ -218,6 +236,94 @@ class ViewsTest(TestCase):
             columns = view.get_props().columns
         self.assertEqual([(column.name, column.label) for column in columns], [("__str__", "API group")])
         self.assertEqual(view.get_data(view.get_data_attrs()).rows[0].cells["__str__"].props, {"text": "staff"})
+
+    def test_column_sources(self) -> None:
+        class Source:
+            def get_full_name(self, user: User) -> str:  # not a @column: the model method is used
+                return "source"
+
+            @column(label="Initials")
+            def initials(self, user: User) -> str:
+                return user.first_name[0] + user.last_name[0]
+
+            @column(label="Login")
+            def username(self, user: User) -> str:  # the model field comes first
+                return "source"
+
+            @property
+            @column(label="Shared")
+            def shared(self) -> str:  # a property: the same value in every row
+                return "source"
+
+        sources = [Source()]
+        self.assertEqual(get_data_attr(User, "get_full_name", sources).get_value(self.bob), "Bob Zed")
+        initials = get_data_attr(User, "initials", sources)
+        self.assertEqual((initials.label, initials.get_value(self.bob)), ("Initials", "BZ"))
+        username = get_data_attr(User, "username", sources)
+        self.assertEqual((username.label, username.get_value(self.bob)), ("username", "bob"))
+        shared = get_data_attr(User, "shared", sources)
+        self.assertEqual((shared.label, shared.get_value(self.bob)), ("Shared", "source"))
+
+        # model methods and properties need no decorator: admin style attributes, or @column
+        def nickname(user: User) -> str:
+            return user.first_name.lower()
+
+        nickname.short_description = "Nick"  # type: ignore[attr-defined]
+        nickname.order_field = "first_name"  # type: ignore[attr-defined]
+
+        @column(component="badge")
+        def badge(user: User) -> int:
+            return user.pk
+
+        with (
+            mock.patch.object(User, "nickname", nickname, create=True),
+            mock.patch.object(User, "badge", property(badge), create=True),
+        ):
+            attr = get_data_attr(User, "nickname", [])
+            self.assertEqual((attr.label, attr.order_field, attr.get_value(self.bob)), ("Nick", "first_name", "bob"))
+            attr = get_data_attr(User, "badge", [])
+            self.assertEqual((attr.label, attr.component, attr.get_value(self.bob)), ("Badge", "badge", self.bob.pk))
+
+        # cached properties too, Django's and functools'
+        @column(label="Initials", order_field="last_name")
+        def monogram(user: User) -> str:
+            return user.first_name[0] + user.last_name[0]
+
+        for prop in (cached_property(monogram), functools.cached_property(monogram)):
+            prop.__set_name__(User, "monogram")
+            with mock.patch.object(User, "monogram", prop, create=True):
+                attr = get_data_attr(User, "monogram", [])
+                value = attr.get_value(User(first_name="Ann", last_name="Lee"))
+                self.assertEqual((attr.label, attr.order_field, value), ("Initials", "last_name", "AL"), prop)
+
+    @override_settings(TIME_ZONE="Europe/Moscow")
+    def test_custom_cell_value(self) -> None:
+        view = list_view(self.admin, model=User)
+        badge = mock.Mock(component="badge")
+        # the plain value the frontend sorts by: local time, a number, a list of texts
+        joined = datetime.datetime(2026, 10, 27, 10, tzinfo=datetime.UTC)
+        for value, plain in (
+            (joined, "2026-10-27T13:00:00+03:00"),
+            (decimal.Decimal("12.50"), 12.5),
+            ([self.group], ["staff"]),
+        ):
+            self.assertEqual(view.get_cell(self.bob, badge, value), Cell("badge", {"value": plain}))
+        # an empty value is empty_value_display, as in the built-in cells
+        for value in (None, ""):
+            self.assertEqual(view.get_cell(self.bob, badge, value), Cell.text("—"))
+
+    def test_lazy_label_translated_per_request(self) -> None:
+        for language, label in (("en", "Users"), ("ru", "Пользователи")):
+            with translation.override(language):
+                columns = page(self.client.get("/groups/", **INERTIA))["props"]["columns"]
+            self.assertEqual(columns[1]["label"], label, language)
+
+    def test_custom_cell(self) -> None:
+        User.objects.create_user("carl").groups.add(self.group)
+        row = table_data(self.client.get("/groups/", **DATA))["rows"][0]
+        # a computed column with a custom cell: the cell gets the value, the frontend sorts by it
+        self.assertEqual(row["cells"]["size"], {"component": "badge", "props": {"value": 2}})
+        self.assertEqual(row["values"]["size"], 2)
 
     def test_reverse(self) -> None:
         # sibling urls are reversed in the current namespace, or in `url_namespace`
