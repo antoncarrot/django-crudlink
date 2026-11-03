@@ -1,6 +1,6 @@
 // Page props. Mirrors django_crudlink/shared/props.py: the Python dataclass fields in camelCase (`CamelCaseJSON`).
 
-import type { CellComponentName } from './components'
+import type { CellComponentName, LayoutTypeName } from './components'
 
 /** Built-in name, or a custom one. */
 type CustomName = string & {}
@@ -55,6 +55,35 @@ export interface ListProps {
    * the table reloads `data`.
    */
   hugeTable: boolean
+}
+
+// Layout of form and detail pages
+
+/** Serialized layout element. */
+export interface LayoutNode {
+  type: LayoutTypeName
+  /** Relative width inside a row. */
+  cols: number
+  /** Fieldset legend. */
+  label: string | null
+  /** Field name of a `field` node. */
+  field: string | null
+  children: LayoutNode[]
+}
+
+// Detail
+
+export interface DetailField {
+  label: string
+  cell: Cell
+}
+
+export interface DetailProps {
+  title: string
+  /** Field name -> field, arranged by `layout`. */
+  fields: Record<string, DetailField>
+  layout: LayoutNode
+  listUrl: string | null
 }
 
 // Every page

@@ -7,7 +7,7 @@ from typing import Any
 
 from inertia.prop_classes import DeferredProp
 
-from .components import CellComponent
+from .components import CellComponent, LayoutType
 
 
 def to_camel(name: str) -> str:
@@ -49,6 +49,10 @@ class Cell(CamelCaseJSON):
     @classmethod
     def text(cls, text: str) -> "Cell":
         return cls(CellComponent.TEXT, {"text": text})
+
+    @classmethod
+    def link(cls, text: str, href: str) -> "Cell":
+        return cls(CellComponent.LINK, {"text": text, "href": href})
 
     @classmethod
     def tags(cls, items: list[str]) -> "Cell":
@@ -105,6 +109,37 @@ class ListProps(CamelCaseJSON):
     # False - all rows are sent, the frontend sorts and pages; True - the backend does (a server `ListMode`),
     # the table reloads `data`
     huge_table: bool
+
+
+# Layout of form and detail pages
+
+
+@dataclass
+class LayoutNode(CamelCaseJSON):
+    """Serialized layout element, see `layout.py`."""
+
+    type: LayoutType
+    cols: int = 1  # relative width inside a row
+    label: str | None = None  # fieldset legend
+    field: str | None = None  # field name of a `FIELD` node
+    children: list["LayoutNode"] = dataclasses.field(default_factory=list)
+
+
+# Detail
+
+
+@dataclass
+class DetailField(CamelCaseJSON):
+    label: str
+    cell: Cell
+
+
+@dataclass
+class DetailProps(CamelCaseJSON):
+    title: str
+    fields: dict[str, DetailField]  # field name -> field, arranged by `layout`
+    layout: LayoutNode
+    list_url: str | None
 
 
 # Every page

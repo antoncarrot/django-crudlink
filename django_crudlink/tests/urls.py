@@ -5,7 +5,8 @@ from django.utils.translation import gettext_lazy
 from inertia import render
 
 from django_crudlink import column
-from django_crudlink.views import ListMode, ListModelView
+from django_crudlink.layout import Layout, Row
+from django_crudlink.views import DetailModelView, ListMode, ListModelView
 
 
 class UserColumns:
@@ -19,6 +20,11 @@ class UserColumns:
 class UserListView(UserColumns, ListModelView):
     model = User
     list_display = ("username", "email", "full_name", "is_staff", "groups")
+
+
+class UserDetailView(UserColumns, DetailModelView):
+    model = User
+    fields = ("username", "email", "is_staff", "groups", "full_name")
 
 
 class GroupListView(ListModelView):
@@ -39,9 +45,12 @@ def host_page(request: HttpRequest) -> HttpResponse:
 # The routes a viewset of each model will mount, in its namespace (the model name): "user:list", ...
 user_urls = [
     path("", UserListView.as_view(), name="list"),
+    path("<pk>/", UserDetailView.as_view(), name="detail"),
 ]
 group_urls = [
     path("", GroupListView.as_view(), name="list"),
+    # the layout picks the fields
+    path("<pk>/", DetailModelView.as_view(model=Group, layout=Layout(Row("name"), "permissions")), name="detail"),
 ]
 # The server list modes; the viewset issue swaps in ServerUserViewSet and UncountedUserViewSet
 server_user_urls = [

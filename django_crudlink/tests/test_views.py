@@ -5,10 +5,13 @@ import json
 from typing import Any
 from unittest import mock
 
+import pytest
+from django.contrib.auth.backends import BaseBackend
 from django.contrib.auth.models import Group, Permission, User
+from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, models
-from django.http import HttpResponse
-from django.test import RequestFactory, TestCase, override_settings
+from django.http import Http404, HttpResponse
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
 from django.utils import translation
@@ -17,8 +20,10 @@ from django.utils.translation import gettext_lazy
 
 from django_crudlink import column
 from django_crudlink.helpers.columns import ModelField, get_data_attr
+from django_crudlink.json import CrudlinkJSONEncoder
+from django_crudlink.layout import Fieldset, Layout, Row, Span
 from django_crudlink.shared import Cell, PageComponent
-from django_crudlink.views import ListMode, ListModelView
+from django_crudlink.views import DetailModelView, ListMode, ListModelView
 
 INERTIA = {"HTTP_X_INERTIA": "true"}
 # the deferred `data` prop of a list page, as Inertia loads it right after the first render
@@ -45,6 +50,13 @@ def list_view(user: User, url: str = "/", **options: Any) -> ListModelView:
     return view
 
 
+class OwnUserBackend(BaseBackend):
+    """Object permission: a user may view their own user, and no other."""
+
+    def has_perm(self, user_obj, perm, obj=None) -> bool:
+        return perm == "auth.view_user" and obj == user_obj
+
+
 @override_settings(ROOT_URLCONF="django_crudlink.tests.urls", LOGIN_URL="/login/", LANGUAGE_CODE="en")
 class ViewsTest(TestCase):
     def setUp(self) -> None:
@@ -56,8 +68,9 @@ class ViewsTest(TestCase):
 
     def test_login_required(self) -> None:
         self.client.logout()
-        # login comes before the permission check: a redirect, not 403
-        self.assertEqual(self.client.get("/users/").status_code, 302)
+        # login comes before the object lookup and the permission check: a redirect, not 404 or 403
+        for url in ("/users/", f"/users/{self.bob.pk}/", "/users/999/"):
+            self.assertEqual(self.client.get(url).status_code, 302, url)
         # an expired session loads the login page as a full page, not inside an Inertia modal
         response = self.client.get("/users/?page=2", **DATA)
         self.assertEqual(response.status_code, 409)
@@ -86,7 +99,10 @@ class ViewsTest(TestCase):
         # the sort key is only sent back: the rows come in the base order, -pk
         self.assertEqual([row["cells"]["username"]["props"]["text"] for row in data["rows"]], ["bob", "admin"])
         bob = data["rows"][0]["cells"]
-        self.assertEqual(bob["username"], {"component": "text", "props": {"text": "bob"}})
+        # the first column links to the detail page
+        self.assertEqual(
+            bob["username"], {"component": "link", "props": {"text": "bob", "href": f"/users/{self.bob.pk}/"}}
+        )
         self.assertEqual(bob["email"], {"component": "text", "props": {"text": "—"}})
         self.assertEqual(bob["full_name"], {"component": "text", "props": {"text": "Bob Zed"}})
         self.assertEqual(bob["is_staff"], {"component": "bool", "props": {"value": False}})
@@ -325,6 +341,27 @@ class ViewsTest(TestCase):
         self.assertEqual(row["cells"]["size"], {"component": "badge", "props": {"value": 2}})
         self.assertEqual(row["values"]["size"], 2)
 
+    def test_list_display_links(self) -> None:
+        # the first column links to the detail page mounted next to the list
+        cells = table_data(self.client.get("/groups/", **DATA))["rows"][0]["cells"]
+        self.assertEqual(
+            cells["name"], {"component": "link", "props": {"text": "staff", "href": f"/groups/{self.group.pk}/"}}
+        )
+        # other columns: an empty value links too; a column with a component keeps its cell
+        view = list_view(self.admin, model=User, list_display_links=("email",), url_namespace="user")
+        username, email = view.get_data_attr("username"), view.get_data_attr("email")
+        badge = mock.Mock(component="badge")
+        badge.name = "email"
+        self.assertEqual(view.get_cell(self.bob, email, ""), Cell.link("—", f"/users/{self.bob.pk}/"))
+        self.assertEqual(view.get_cell(self.bob, username, "bob"), Cell.text("bob"))
+        self.assertEqual(view.get_cell(self.bob, badge, 3), Cell("badge", {"value": 3}))
+        # or none
+        view = list_view(self.admin, model=User, list_display_links=(), url_namespace="user")
+        self.assertEqual(view.get_cell(self.bob, email, ""), Cell.text("—"))
+        # without a detail url next to the list, cells stay text
+        cells = table_data(self.client.get("/server-users/", **DATA))["rows"][0]["cells"]
+        self.assertEqual(cells["username"]["component"], "text")
+
     def test_reverse(self) -> None:
         # sibling urls are reversed in the current namespace, or in `url_namespace`
         view = ListModelView(model=User)
@@ -332,19 +369,88 @@ class ViewsTest(TestCase):
         request.resolver_match = resolve("/users/")
         view.setup(request)
         self.assertEqual(view.reverse("list"), "/users/")
+        self.assertEqual(view.reverse("detail", self.bob.pk), f"/users/{self.bob.pk}/")
+        view.url_namespace = "server-users"
+        self.assertEqual(view.reverse("list"), "/server-users/")
         self.assertIsNone(view.reverse("detail", self.bob.pk))  # not mounted
-        view.url_namespace = "group"
-        self.assertEqual(view.reverse("list"), "/groups/")
+
+    def test_detail(self) -> None:
+        response = page(self.client.get(f"/users/{self.bob.pk}/", **INERTIA))
+        self.assertEqual(response["component"], "BaseDetailPage")
+        props = response["props"]
+        self.assertEqual(props["title"], "bob")
+        names = ["username", "email", "is_staff", "groups", "full_name"]
+        self.assertEqual(list(props["fields"]), names)
+        self.assertEqual(
+            props["fields"]["username"], {"label": "Username", "cell": {"component": "text", "props": {"text": "bob"}}}
+        )
+        self.assertEqual(props["fields"]["groups"]["cell"], {"component": "tags", "props": {"items": ["staff"]}})
+        # the @column of the view works here too
+        self.assertEqual(
+            props["fields"]["full_name"],
+            {"label": "Full name", "cell": {"component": "text", "props": {"text": "Bob Zed"}}},
+        )
+        # no layout: the fields stacked in order
+        self.assertEqual(props["layout"]["type"], "layout")
+        self.assertEqual(
+            [(node["type"], node["field"]) for node in props["layout"]["children"]], [("field", name) for name in names]
+        )
+        self.assertEqual(props["listUrl"], "/users/")
+        # a missing or malformed pk
+        for pk in ("999", "abc"):
+            self.assertEqual(self.client.get(f"/users/{pk}/", **INERTIA).status_code, 404, pk)
+
+    def test_detail_layout(self) -> None:
+        # a layout without fields: the layout picks the fields
+        props = page(self.client.get(f"/groups/{self.group.pk}/", **INERTIA))["props"]
+        self.assertEqual(list(props["fields"]), ["name", "permissions"])
+        self.assertEqual([node["type"] for node in props["layout"]["children"]], ["row", "field"])
+        # neither: all model fields, except auto created (the pk)
+        self.assertEqual([attr.name for attr in DetailModelView(model=Group).get_fields()], ["name", "permissions"])
+
+    def test_detail_queryset(self) -> None:
+        # the object is looked up in the rows of the view: one outside `queryset` is a 404
+        view = DetailModelView(queryset=User.objects.filter(is_staff=True))
+        request = RequestFactory().get("/")
+        view.setup(request, pk=str(self.admin.pk))
+        self.assertEqual(view.get_object(), self.admin)
+        view.setup(request, pk=str(self.bob.pk))
+        with pytest.raises(Http404):
+            view.get_object()
+        view.setup(request)
+        with self.assertRaisesMessage(ImproperlyConfigured, "DetailModelView needs a `pk` url kwarg"):
+            view.get_object()
 
     def test_permissions(self) -> None:
         user = User.objects.create_user("viewer")
         user.user_permissions.add(Permission.objects.get(codename="view_user"))
         self.client.force_login(user)
         self.assertEqual(self.client.get("/users/", **INERTIA).status_code, 200)
-        self.assertEqual(self.client.get("/groups/").status_code, 403)
+        self.assertEqual(self.client.get(f"/users/{self.bob.pk}/", **INERTIA).status_code, 200)
+        self.assertEqual(self.client.get("/users/999/", **INERTIA).status_code, 404)
+        # without permission a missing group is a 403 too: the status doesn't tell which groups exist
+        for url in ("/groups/", f"/groups/{self.group.pk}/", "/groups/999/"):
+            self.assertEqual(self.client.get(url).status_code, 403, url)
         # change permission grants view
         user.user_permissions.add(Permission.objects.get(codename="change_group"))
-        self.assertEqual(self.client.get("/groups/").status_code, 200)
+        for url, status in (("/groups/", 200), (f"/groups/{self.group.pk}/", 200), ("/groups/999/", 404)):
+            self.assertEqual(self.client.get(url).status_code, status, url)
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "django.contrib.auth.backends.ModelBackend",
+            "django_crudlink.tests.test_views.OwnUserBackend",
+        ]
+    )
+    def test_object_permission(self) -> None:
+        # the permission check gets the object of the page: the backend lets a user view their own user
+        user = User.objects.create_user("carl")
+        self.client.force_login(user)
+        self.assertEqual(self.client.get(f"/users/{user.pk}/", **INERTIA).status_code, 200)
+        self.assertEqual(self.client.get(f"/users/{self.bob.pk}/", **INERTIA).status_code, 403)
+        self.assertEqual(self.client.get("/users/", **INERTIA).status_code, 403)
+        # no object to grant on: checked without it, as for a user without permission
+        self.assertEqual(self.client.get("/users/999/", **INERTIA).status_code, 403)
 
     def test_host_page_gets_shared_props(self) -> None:
         # CrudlinkMiddleware shares the `crudlink` prop with pages that aren't crudlink views
@@ -369,3 +475,30 @@ class ViewsTest(TestCase):
                 props = page(self.client.get("/host/", **INERTIA))["props"]
                 self.assertContains(self.client.get("/host/"), f"<title>{title}</title>")
             self.assertEqual(props["crudlink"], {"siteTitle": title})
+
+
+class LayoutTest(SimpleTestCase):
+    def test_serialize(self) -> None:
+        layout = Layout(Row(Span("a", cols=2), "b"), Fieldset("F", "c"))
+        self.assertEqual(layout.field_names(), ["a", "b", "c"])
+
+        def node(type_: str, cols: int = 1, label: str | None = None, field: str | None = None, children=()) -> dict:
+            return {"type": type_, "cols": cols, "label": label, "field": field, "children": list(children)}
+
+        self.assertEqual(
+            json.loads(json.dumps(layout.serialize(), cls=CrudlinkJSONEncoder)),
+            node(
+                "layout",
+                children=[
+                    node("row", children=[node("field", cols=2, field="a"), node("field", field="b")]),
+                    node("fieldset", label="F", children=[node("field", field="c")]),
+                ],
+            ),
+        )
+
+    def test_mistakes(self) -> None:
+        # caught where the layout is defined, not on every request of the page
+        with self.assertRaisesMessage(TypeError, "A layout element is a field name, Span, Row, Column or Fieldset"):
+            Layout(("username", "email"))
+        with self.assertRaisesMessage(TypeError, "The first argument of a Fieldset is its label"):
+            Fieldset(Row("username"))

@@ -10,7 +10,7 @@ from django.contrib.auth.models import User
 from django.test import SimpleTestCase
 
 from django_crudlink.json import CrudlinkJSONEncoder
-from django_crudlink.shared import CamelCaseJSON, Cell, CellComponent, ListParam, PageComponent, RowData
+from django_crudlink.shared import CamelCaseJSON, Cell, CellComponent, LayoutType, ListParam, PageComponent, RowData
 from django_crudlink.shared import props as props_module
 from django_crudlink.shared.props import to_camel
 
@@ -39,7 +39,7 @@ def ts_interface_fields() -> dict[str, set[str]]:
 
 class SharedComponentsTest(SimpleTestCase):
     def test_enums_match_typescript(self) -> None:
-        enums: list[type[StrEnum]] = [CellComponent, PageComponent]
+        enums: list[type[StrEnum]] = [CellComponent, LayoutType, PageComponent]
         for enum in enums:
             with self.subTest(enum=enum.__name__):
                 self.assertEqual(ts_const_values(enum.__name__), {member.value for member in enum})
