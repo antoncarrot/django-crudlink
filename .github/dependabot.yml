@@ -13,6 +13,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    versioning-strategy: increase-if-necessary
+    ignore:
+      # vue-tsc runs TypeScript 6's JS tsc; TypeScript 7 ships only the native compiler
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
       - frontend
