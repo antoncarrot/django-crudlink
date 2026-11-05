@@ -58,7 +58,7 @@ describe('BaseList', () => {
   })
 
   it('shows the loading state while the page reloads the data', () => {
-    const wrapper = mountList(listProps({ loading: true }))
+    const wrapper = mountList(listProps({ isLoading: true }))
     expect(wrapper.getComponent(DataTable).props('loading')).toBe(true)
     // the rows stay until the new data comes
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)
@@ -96,28 +96,28 @@ describe('BaseList', () => {
 
   it('pages with the sort the table shows, even before the data has it', () => {
     // a sort by -email is still loading: the data says name
-    const wrapper = mountList(listProps({ hugeTable: true, loading: true, data: listData({ ordering: 'name' }) }))
+    const wrapper = mountList(listProps({ isHugeTable: true, isLoading: true, data: listData({ ordering: 'name' }) }))
     wrapper.getComponent(DataTable).vm.$emit('page', { page: 1, sortField: 'email', sortOrder: -1 })
     expect(wrapper.emitted('change')).toEqual([[{ page: 2, ordering: '-email' }]])
   })
 
   it('goes back to the page and sort in the data when a reload ends without new data', async () => {
     const data = listData({ pagination: { page: 1, pageSize: 25, total: 80, hasNext: true }, ordering: 'name' })
-    const wrapper = mountList(listProps({ hugeTable: true, data }))
+    const wrapper = mountList(listProps({ isHugeTable: true, data }))
     const table = wrapper.getComponent(DataTable)
     // clicks: page 3, then a sort by -email; the page starts a reload
     table.vm.$emit('update:first', 50)
     table.vm.$emit('update:sortField', 'email')
     table.vm.$emit('update:sortOrder', -1)
-    await wrapper.setProps({ loading: true })
+    await wrapper.setProps({ isLoading: true })
     expect([table.props('first'), table.props('sortField'), table.props('sortOrder')]).toEqual([50, 'email', -1])
 
     // the reload failed: same data
-    await wrapper.setProps({ loading: false })
+    await wrapper.setProps({ isLoading: false })
     expect([table.props('first'), table.props('sortField'), table.props('sortOrder')]).toEqual([0, 'name', 1])
   })
 
-  describe('frontend mode (hugeTable = false)', () => {
+  describe('frontend mode (isHugeTable = false)', () => {
     it('sorts rows in the table itself, by the plain values', () => {
       // rows arrive as bob, alice; the table sorts them itself by values.name
       const wrapper = mountList(listProps({ data: listData({ ordering: 'name' }) }))
@@ -129,10 +129,10 @@ describe('BaseList', () => {
     })
   })
 
-  describe('hugeTable mode', () => {
+  describe('isHugeTable mode', () => {
     it('lets the backend sort by column name', () => {
       // rows arrive as bob, alice and stay so: the backend sorted them
-      const wrapper = mountList(listProps({ hugeTable: true, data: listData({ ordering: 'name' }) }))
+      const wrapper = mountList(listProps({ isHugeTable: true, data: listData({ ordering: 'name' }) }))
       const table = wrapper.getComponent(DataTable)
       expect(table.props('lazy')).toBe(true)
       expect(table.props('sortField')).toBe('name')
@@ -145,7 +145,7 @@ describe('BaseList', () => {
     it('pages without a row count', async () => {
       const rows = Array.from({ length: 25 }, (_, index) => row(index, `user${index}`))
       const data = listData({ rows, pagination: { page: 2, pageSize: 25, total: null, hasNext: true } })
-      const wrapper = mountList(listProps({ hugeTable: true, data }))
+      const wrapper = mountList(listProps({ isHugeTable: true, data }))
       const table = wrapper.getComponent(DataTable)
       // 25 rows before, 25 on this page, one more so "next" is enabled
       expect(table.props('totalRecords')).toBe(51)

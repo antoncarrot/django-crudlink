@@ -91,4 +91,6 @@ export interface DetailProps {
 /** The `crudlink` prop every Inertia page gets (`CrudlinkMiddleware.get_shared_props`). */
 export interface CrudlinkSharedProps {
   siteTitle: string
+  /** `CRUDLINK_INERTIA_NAVIGATION`, see composables/useNavigation.ts */
+  inertiaNavigation: boolean
 }

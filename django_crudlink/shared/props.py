@@ -150,3 +150,4 @@ class CrudlinkSharedProps(CamelCaseJSON):
     """The `crudlink` prop every Inertia page gets (`CrudlinkMiddleware.get_shared_props`)."""
 
     site_title: str
+    inertia_navigation: bool  # `CRUDLINK_INERTIA_NAVIGATION`

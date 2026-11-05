@@ -42,7 +42,7 @@ describe('BaseListPage', () => {
     const wrapper = mountPage(props)
     expect(wrapper.find('h1').text()).toBe('Users')
     const table = wrapper.getComponent(BaseList)
-    expect(table.props()).toEqual({ columns: props.columns, data: props.data, hugeTable: true, loading: false })
+    expect(table.props()).toEqual({ columns: props.columns, data: props.data, isHugeTable: true, isLoading: false })
     expect(table.attributes('title')).toBeUndefined()
   })
 
@@ -52,7 +52,7 @@ describe('BaseListPage', () => {
     huge.vm.$emit('change', { page: 2, ordering: null })
     expect(router.get).toHaveBeenCalledWith('/users/?page=2', {}, expect.objectContaining({ only: ['data'] }))
     await huge.vm.$nextTick()
-    expect(huge.props('loading')).toBe(true)
+    expect(huge.props('isLoading')).toBe(true)
 
     const table = mountPage(listProps()).getComponent(BaseList)
     table.vm.$emit('change', { page: 1, ordering: 'name' })

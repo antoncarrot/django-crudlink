@@ -10,7 +10,8 @@ from .shared import CrudlinkSharedProps
 class CrudlinkMiddleware:
     """Share the `crudlink` prop with every Inertia page, your own pages too.
 
-    The site layout (`SiteLayout`) reads it. Override `get_shared_props()` to change it.
+    The site layout (`SiteLayout`) and the navigation mode (`useNavigation`) read it.
+    Override `get_shared_props()` to change it.
     """
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
@@ -23,4 +24,4 @@ class CrudlinkMiddleware:
         return self.get_response(request)
 
     def get_shared_props(self, request: HttpRequest) -> CrudlinkSharedProps:
-        return CrudlinkSharedProps(site_title=conf.site_title())
+        return CrudlinkSharedProps(site_title=conf.site_title(), inertia_navigation=conf.inertia_navigation())

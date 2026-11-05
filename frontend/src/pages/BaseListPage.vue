@@ -6,11 +6,11 @@ import type { ListProps } from '../shared'
 
 const props = defineProps<ListProps>()
 
-const { loading, onChange } = useInertiaListUrl(() => props.hugeTable)
+const { isLoading, onChange } = useInertiaListUrl(() => props.hugeTable)
 </script>
 
 <template>
   <CrudPage :title="title">
-    <BaseList :columns :data :huge-table :loading @change="onChange" />
+    <BaseList :columns :data :is-huge-table="hugeTable" :is-loading="isLoading" @change="onChange" />
   </CrudPage>
 </template>

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { DefineComponent } from 'vue'
 
 import { createCrudlinkApp } from './app'
+import BaseDetailPage from './pages/BaseDetailPage.vue'
 import BaseListPage from './pages/BaseListPage.vue'
 import { PageComponent } from './shared'
 import { createInertiaApp } from './testing/inertia'
@@ -20,6 +21,7 @@ describe('createCrudlinkApp', () => {
     const HostPage = {} as DefineComponent
     const resolve = pageResolver(() => HostPage)
     expect(resolve(PageComponent.List)).toBe(BaseListPage)
+    expect(resolve(PageComponent.Detail)).toBe(BaseDetailPage)
     expect(resolve('Dashboard')).toBe(HostPage)
     // names of Object.prototype members are project pages too
     expect(resolve('toString')).toBe(HostPage)
