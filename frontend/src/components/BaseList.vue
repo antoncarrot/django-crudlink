@@ -11,7 +11,7 @@ import CellRenderer from './CellRenderer.vue'
  * The table state (page, ordering) is the one in `data`: the backend reads it from the url,
  * and the page keeps `data` in step with the url. A sort or page change is only emitted as
  * `change`; the page then updates the url and `data` (for a huge table, reloads it, with
- * `loading` meanwhile). Until then the DataTable shows the clicked sort or page itself, and
+ * `isLoading` meanwhile). Until then the DataTable shows the clicked sort or page itself, and
  * goes back to the one in `data` if a reload ends without new data.
  *
  * Before the first `data` there is nothing to page: no paginator.
@@ -22,7 +22,7 @@ const emit = defineEmits<{ change: [state: ListState] }>()
 const rows = computed(() => props.data?.rows ?? [])
 /** null until `data` is loaded. */
 const pagination = computed(() => props.data?.pagination ?? null)
-const loading = computed(() => !props.data || props.loading)
+const isLoading = computed(() => !props.data || props.isLoading)
 const ordering = computed(() => props.data?.ordering ?? null)
 const page = computed(() => pagination.value?.page ?? 1)
 /** The sort column in `data`, and its order. */
@@ -53,7 +53,7 @@ const valuesPrefix = 'values.'
  * the table sorts the rows itself, by their plain `values`: the sort field is `values.<name>`.
  */
 function columnSortField(name: string): string {
-  return props.hugeTable ? name : valuesPrefix + name
+  return props.isHugeTable ? name : valuesPrefix + name
 }
 
 /** Column name of a sort field, the inverse of `columnSortField()`. */
@@ -70,9 +70,9 @@ const first = ref(0)
 const sortField = ref<string | undefined>()
 const sortOrder = ref<number | undefined>(1)
 watch(
-  [() => props.data, loading],
+  [() => props.data, isLoading],
   () => {
-    if (loading.value) return
+    if (isLoading.value) return
     first.value = firstRowIndex.value
     sortField.value = dataSortColumn.value && columnSortField(dataSortColumn.value)
     sortOrder.value = dataSortOrder.value
@@ -100,8 +100,8 @@ function onSort(event: DataTableSortEvent): void {
   <DataTable
     :value="rows"
     data-key="pk"
-    :lazy="hugeTable"
-    :loading="loading"
+    :lazy="isHugeTable"
+    :loading="isLoading"
     :paginator="pagination !== null"
     removable-sort
     :rows="pagination?.pageSize"

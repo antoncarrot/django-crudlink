@@ -1,6 +1,6 @@
 // Frontend-only types. Types shared with the backend are in ./shared.
 
-import type { ListProps } from './shared'
+import type { DetailProps, ListProps } from './shared'
 
 /** Table state: the page and the sort column (`-` prefix for descending), kept in the url as `?page=2&o=-name`. */
 export interface ListState {
@@ -11,7 +11,10 @@ export interface ListState {
 /** Props of the `BaseList` table: the list page props without the page chrome. */
 export interface BaseListProps extends Pick<ListProps, 'columns' | 'data'> {
   /** The backend sorts and pages (`ListProps.hugeTable`). Default false. */
-  hugeTable?: boolean
+  isHugeTable?: boolean
   /** A reload of `data` is running (huge table). */
-  loading?: boolean
+  isLoading?: boolean
 }
+
+/** Props of the `BaseDetail` field list: the detail page props without the page chrome. */
+export interface BaseDetailProps extends Pick<DetailProps, 'fields' | 'layout'> {}

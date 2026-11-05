@@ -12,9 +12,9 @@ describe('useInertiaListUrl', () => {
   })
 
   it('changes the url and the state in data, without a request', () => {
-    const { loading, onChange } = useInertiaListUrl()
+    const { isLoading, onChange } = useInertiaListUrl()
     onChange({ page: 1, ordering: '-name' })
-    expect(loading.value).toBe(false)
+    expect(isLoading.value).toBe(false)
     expect(router.get).not.toHaveBeenCalled()
     const options = vi.mocked(router.replace).mock.lastCall?.[0] as {
       url: string
@@ -33,7 +33,7 @@ describe('useInertiaListUrl', () => {
   })
 
   it('reloads data for a huge table, loading until the latest reload finishes', () => {
-    const { loading, onChange } = useInertiaListUrl(() => true)
+    const { isLoading, onChange } = useInertiaListUrl(() => true)
     onChange({ page: 2, ordering: null })
     expect(router.replace).not.toHaveBeenCalled()
     expect(router.get).toHaveBeenCalledWith(
@@ -41,7 +41,7 @@ describe('useInertiaListUrl', () => {
       {},
       expect.objectContaining({ only: ['data'], replace: true, preserveState: true, preserveScroll: true }),
     )
-    expect(loading.value).toBe(true)
+    expect(isLoading.value).toBe(true)
     const onFinish = () => {
       const options = vi.mocked(router.get).mock.lastCall?.[2] as { onFinish: () => void }
       return options.onFinish
@@ -51,8 +51,8 @@ describe('useInertiaListUrl', () => {
     const latest = onFinish()
 
     first() // interrupted by the newer reload
-    expect(loading.value).toBe(true)
+    expect(isLoading.value).toBe(true)
     latest() // done, failed, or interrupted by another visit on the page
-    expect(loading.value).toBe(false)
+    expect(isLoading.value).toBe(false)
   })
 })

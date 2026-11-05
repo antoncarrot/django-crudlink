@@ -455,9 +455,29 @@ class ViewsTest(TestCase):
     def test_host_page_gets_shared_props(self) -> None:
         # CrudlinkMiddleware shares the `crudlink` prop with pages that aren't crudlink views
         props = page(self.client.get("/host/", **INERTIA))["props"]
-        self.assertEqual(props["crudlink"], {"siteTitle": "Crudlink"})
+        self.assertEqual(props["crudlink"], {"siteTitle": "Crudlink", "inertiaNavigation": False})
         # the first load renders site.html, its <title> comes from {% crudlink_site_title %}
         self.assertContains(self.client.get("/host/"), "<title>Crudlink</title>")
+
+    @override_settings(CRUDLINK_INERTIA_NAVIGATION=True)
+    def test_inertia_navigation(self) -> None:
+        # crudlink pages get the navigation mode in the shared prop too
+        props = page(self.client.get(f"/users/{self.bob.pk}/", **INERTIA))["props"]
+        self.assertTrue(props["crudlink"]["inertiaNavigation"])
+
+    def test_inertia_navigation_from_string(self) -> None:
+        # a string from the environment counts by its meaning: "False" and "0" are off
+        for value, expected in (
+            ("true", True),
+            ("1", True),
+            ("yes", True),
+            ("False", False),
+            ("0", False),
+            ("", False),
+        ):
+            with self.subTest(value=value), override_settings(CRUDLINK_INERTIA_NAVIGATION=value):
+                props = page(self.client.get("/host/", **INERTIA))["props"]
+                self.assertIs(props["crudlink"]["inertiaNavigation"], expected)
 
     def test_site_title_from_catalog(self) -> None:
         # the msgid is a key: crudlink's en and ru catalogs have the title,
@@ -465,7 +485,7 @@ class ViewsTest(TestCase):
         for language in ("en", "ru", "de"):
             with translation.override(language):
                 props = page(self.client.get("/host/", **INERTIA))["props"]
-            self.assertEqual(props["crudlink"], {"siteTitle": "Crudlink"}, language)
+            self.assertEqual(props["crudlink"]["siteTitle"], "Crudlink", language)
 
     # en and ru titles are the same: a msgid from django.contrib.auth's catalog shows the language per request
     @mock.patch("django_crudlink.conf.SITE_TITLE", gettext_lazy("users"))
@@ -474,7 +494,7 @@ class ViewsTest(TestCase):
             with translation.override(language):
                 props = page(self.client.get("/host/", **INERTIA))["props"]
                 self.assertContains(self.client.get("/host/"), f"<title>{title}</title>")
-            self.assertEqual(props["crudlink"], {"siteTitle": title})
+            self.assertEqual(props["crudlink"]["siteTitle"], title)
 
 
 class LayoutTest(SimpleTestCase):

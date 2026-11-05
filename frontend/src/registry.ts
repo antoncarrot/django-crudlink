@@ -2,6 +2,7 @@ import { type Component, type InjectionKey, inject, type Plugin } from 'vue'
 
 import BoolCell from './components/cells/BoolCell.vue'
 import FallbackCell from './components/cells/FallbackCell.vue'
+import LinkCell from './components/cells/LinkCell.vue'
 import TagsCell from './components/cells/TagsCell.vue'
 import TextCell from './components/cells/TextCell.vue'
 import { CellComponent } from './shared'
@@ -21,6 +22,7 @@ const builtIn: Registry = {
   /** Backend sends `Cell(CellComponent.TEXT, props)`, frontend renders `cells.text`. */
   cells: {
     [CellComponent.Text]: TextCell,
+    [CellComponent.Link]: LinkCell,
     [CellComponent.Bool]: BoolCell,
     [CellComponent.Tags]: TagsCell,
   },

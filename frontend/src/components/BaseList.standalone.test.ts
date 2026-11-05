@@ -8,7 +8,7 @@ import { CellComponent } from '../shared'
 import BaseList from './BaseList.vue'
 
 describe('BaseList without Inertia', () => {
-  it('renders the cells and emits the table state', () => {
+  it('renders plain links and emits the table state', () => {
     const wrapper = mount(BaseList, {
       props: {
         columns: [{ name: 'name', label: 'Name', sortable: true }],
@@ -16,18 +16,20 @@ describe('BaseList without Inertia', () => {
           rows: [
             {
               pk: '1',
-              cells: { name: { component: CellComponent.Text, props: { text: 'bob' } } },
+              cells: { name: { component: CellComponent.Link, props: { text: 'bob', href: '/users/1/' } } },
               values: null,
             },
           ],
           pagination: { page: 1, pageSize: 25, total: 1, hasNext: false },
           ordering: null,
         },
-        hugeTable: true,
+        isHugeTable: true,
       },
       global: { plugins: [[OpenVue, { unstyled: true }]] },
     })
-    expect(wrapper.get('tbody td').text()).toBe('bob')
+    const link = wrapper.get('tbody a')
+    expect(link.attributes('href')).toBe('/users/1/')
+    expect(link.text()).toBe('bob')
 
     wrapper.getComponent(DataTable).vm.$emit('sort', { sortField: 'name', sortOrder: 1 })
     expect(wrapper.emitted('change')).toEqual([[{ page: 1, ordering: 'name' }]])

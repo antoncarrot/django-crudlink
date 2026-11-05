@@ -3,12 +3,13 @@ import Material from '@openvue/themes/material'
 import OpenVue from 'openvue/config'
 import { type Component, createApp, type DefineComponent, h } from 'vue'
 
+import BaseDetailPage from './pages/BaseDetailPage.vue'
 import BaseListPage from './pages/BaseListPage.vue'
 import { type CrudlinkRegistryOptions, crudlinkRegistry } from './registry'
 import { PageComponent } from './shared'
 
 export interface CrudlinkAppOptions extends CrudlinkRegistryOptions {
-  /** Resolve project pages. Crudlink pages (BaseListPage, ...) are resolved first. */
+  /** Resolve project pages. Crudlink pages (BaseListPage, BaseDetailPage, ...) are resolved first. */
   resolve?: (name: string) => DefineComponent | undefined
   /** Persistent layout wrapping every page (full site mode). */
   layout?: Component
@@ -47,6 +48,7 @@ const themeOptions = {
 /** Backend views render these by `PageComponent` name. */
 const crudPages: Record<string, Component> = {
   [PageComponent.List]: BaseListPage,
+  [PageComponent.Detail]: BaseDetailPage,
 }
 
 export function createCrudlinkApp(options: CrudlinkAppOptions = {}): Promise<void> {
