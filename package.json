@@ -40,7 +40,7 @@
     "vue": "^3.5.43"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.4",
+    "@biomejs/biome": "2.6.6",
     "@inertiajs/vue3": "^3.7.1",
     "@openvue/themes": "^1.0.0",
     "@vitejs/plugin-vue": "^6.0.9",
