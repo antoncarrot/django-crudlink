@@ -4,14 +4,14 @@ from functools import cached_property
 from typing import Any
 
 from django.core.paginator import Paginator
-from django.db.models import Model, QuerySet
+from django.db.models import ForeignObjectRel, Model, QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.utils.text import capfirst
 from django.views import View
 from inertia import defer
 
 from ..helpers.cells import to_plain_value
-from ..helpers.columns import DataAttr
+from ..helpers.columns import DataAttr, ModelField
 from ..shared import Cell, ColumnSchema, ListData, ListParam, ListProps, PageComponent, Pagination, RowData
 from .base import CrudViewMixin
 
@@ -84,10 +84,11 @@ class ListModelView(CrudViewMixin, View):
     `list_mode` decides who sorts and pages them, see `ListMode`. With the server
     modes the table reloads `data` for each page (an Inertia partial reload of the same url).
 
-    The `list_display_links` columns link to the detail page, when a `detail` url is mounted next to the list.
+    The `list_display_links` columns link to the detail page of the model, when it is mounted (see `url_names`).
     """
 
     component = PageComponent.LIST
+    view_type = "list"
     list_display: Sequence[str] = ("__str__",)
     list_display_links: Sequence[str] | None = None  # columns linked to the detail page; None - first, () - none
     ordering: Sequence[str] | None = None
@@ -142,8 +143,23 @@ class ListModelView(CrudViewMixin, View):
             order_by.append("-pk" if not order_by else "pk")
         return key or None, order_by
 
+    def optimize_queryset(self, queryset: QuerySet, data_attrs: dict[str, DataAttr]) -> QuerySet:
+        """Load the related objects of the relation columns with the rows, not with a query per row."""
+        for attr in data_attrs.values():
+            if not isinstance(attr, ModelField) or not attr.field.is_relation:
+                continue
+            if attr.name != attr.field.name:  # the raw id of a FK, e.g. "author_id": no object to load
+                continue
+            if isinstance(attr.field, ForeignObjectRel):  # reverse relations
+                queryset = queryset.prefetch_related(attr.field.get_accessor_name())
+            elif attr.field.concrete and (attr.field.many_to_one or attr.field.one_to_one):  # FK, one-to-one
+                queryset = queryset.select_related(attr.name)
+            else:  # M2M, generic relations
+                queryset = queryset.prefetch_related(attr.name)
+        return queryset
+
     def get_item_url(self, obj: Model) -> str | None:
-        """Url the link columns of a row go to: the detail page, None if it isn't mounted."""
+        """Url the link columns of a row go to: the detail page of the model, None if it isn't mounted."""
         return self.reverse("detail", obj.pk)
 
     def get_cell(self, obj: Model, attr: DataAttr, value: Any) -> Cell:
@@ -187,7 +203,7 @@ class ListModelView(CrudViewMixin, View):
     def get_data(self, data_attrs: dict[str, DataAttr]) -> ListData:
         queryset = self.filter_queryset(self.get_queryset())
         ordering, order_by = self.get_ordering(data_attrs, queryset)
-        objects, pagination = self.paginate(queryset.order_by(*order_by))
+        objects, pagination = self.paginate(self.optimize_queryset(queryset, data_attrs).order_by(*order_by))
         return ListData(rows=self.get_rows(objects, data_attrs), pagination=pagination, ordering=ordering)
 
     def get_props(self) -> ListProps:

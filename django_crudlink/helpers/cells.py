@@ -2,11 +2,13 @@
 
 import datetime
 import decimal
+from collections.abc import Callable
 from typing import Any
 
+from django.db.models import Model
 from django.utils import formats, timezone
 
-from ..shared import Cell, PlainValue
+from ..shared import Cell, CellLink, PlainValue
 
 
 def is_empty(value: Any) -> bool:
@@ -25,10 +27,22 @@ def to_text(value: Any, empty: str) -> str:
     return str(value)
 
 
-def to_cell(value: Any, empty: str) -> Cell:
-    """Choose a built-in cell for a value. Related objects are their text, lists of them tags."""
+def to_cell(value: Any, empty: str, related_url: Callable[[Model], str | None] | None = None) -> Cell:
+    """Choose a built-in cell for a value. Related objects are their text, lists of them tags.
+
+    With `related_url`, a related object links to `related_url(obj)`, and a list of them too when each has a url.
+    """
     if isinstance(value, bool):
         return Cell.boolean(value)
+    if related_url is not None:
+        if isinstance(value, Model) and (href := related_url(value)):
+            return Cell.link(str(value), href)
+        if isinstance(value, (list, tuple)) and value and all(isinstance(item, Model) for item in value):
+            hrefs = [related_url(item) for item in value]
+            if all(hrefs):
+                return Cell.links(
+                    [CellLink(text=str(item), href=href) for item, href in zip(value, hrefs, strict=True)]
+                )
     if isinstance(value, (list, tuple)):
         return Cell.tags([str(item) for item in value])
     return Cell.text(to_text(value, empty))
@@ -37,7 +51,7 @@ def to_cell(value: Any, empty: str) -> Cell:
 def to_plain_value(value: Any) -> PlainValue:
     """Plain value of a column (`RowData.values`), the frontend sorts (and will filter) by it.
 
-    Unlike `to_cell()` (display: localized text), it keeps the types, so the sort is
+    Unlike `to_cell()` (display: localized text, links), it keeps the types, so the sort is
     right: numbers stay numbers, dates are ISO strings, `None` stays `None`.
     """
     if value is None or isinstance(value, (bool, int, float, str)):

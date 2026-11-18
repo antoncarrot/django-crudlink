@@ -9,6 +9,7 @@ from .params import ListParam
 from .props import (
     CamelCaseJSON,
     Cell,
+    CellLink,
     ColumnSchema,
     CrudlinkSharedProps,
     DetailField,
@@ -25,6 +26,7 @@ __all__ = (
     "CamelCaseJSON",
     "Cell",
     "CellComponent",
+    "CellLink",
     "ColumnSchema",
     "CrudlinkSharedProps",
     "DetailField",

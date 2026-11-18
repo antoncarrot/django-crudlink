@@ -19,6 +19,7 @@ class DetailModelView(CrudViewMixin, View):
     """
 
     component = PageComponent.DETAIL
+    view_type = "detail"
     # None - all model fields, except auto created. Names are resolved like
     # list columns: model field, `@column` method of the view, model attribute.
     fields: Sequence[str] | None = None

@@ -5,6 +5,7 @@
 export const CellComponent = {
   Text: 'text',
   Link: 'link',
+  Links: 'links',
   Bool: 'bool',
   Tags: 'tags',
 } as const

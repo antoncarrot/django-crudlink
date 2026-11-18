@@ -7,6 +7,12 @@ type CustomName = string & {}
 
 // Cells
 
+/** An item of the "links" cell: a related object and its url. */
+export interface CellLink {
+  text: string
+  href: string
+}
+
 export interface Cell {
   component: CellComponentName | CustomName
   props: Record<string, unknown>

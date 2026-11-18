@@ -35,6 +35,14 @@ class CamelCaseJSON:
 
 
 @dataclass
+class CellLink(CamelCaseJSON):
+    """An item of the "links" cell: a related object and its url."""
+
+    text: str
+    href: str
+
+
+@dataclass
 class Cell(CamelCaseJSON):
     """A value rendered by the frontend cell component registered under `component`.
 
@@ -53,6 +61,10 @@ class Cell(CamelCaseJSON):
     @classmethod
     def link(cls, text: str, href: str) -> "Cell":
         return cls(CellComponent.LINK, {"text": text, "href": href})
+
+    @classmethod
+    def links(cls, items: list[CellLink]) -> "Cell":
+        return cls(CellComponent.LINKS, {"items": items})
 
     @classmethod
     def tags(cls, items: list[str]) -> "Cell":

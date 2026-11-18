@@ -64,4 +64,32 @@ describe('BaseDetail', () => {
     expect(wrapper.findAll('fieldset').map((fieldset) => fieldset.find('legend').text())).toEqual(['Access'])
     expect(wrapper.get('fieldset a').attributes('href')).toBe('/groups/1/')
   })
+
+  it('renders related objects as tags linked to their pages', () => {
+    const wrapper = mount(BaseDetail, {
+      props: {
+        fields: {
+          groups: {
+            label: 'Groups',
+            cell: {
+              component: CellComponent.Links,
+              props: {
+                items: [
+                  { text: 'staff', href: '/groups/1/' },
+                  { text: 'editors', href: '/groups/2/' },
+                ],
+              },
+            },
+          },
+        },
+        layout: node(LayoutType.Layout, null, [node(LayoutType.Field, 'groups')]),
+      },
+      global: { plugins: [[OpenVue, { unstyled: true }]] },
+    })
+    const cell = wrapper.get('.link-tags-cell')
+    expect(cell.findAll('a').map((link) => [link.text(), link.attributes('href')])).toEqual([
+      ['staff', '/groups/1/'],
+      ['editors', '/groups/2/'],
+    ])
+  })
 })
