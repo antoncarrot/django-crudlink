@@ -1,15 +1,16 @@
 """Resolve `list_display` names into value getters.
 
 A name is looked up in order:
-1. model field
+1. model field, generic relations too
 2. `@column` method of the view (called as `method(obj)`) or property
-3. model attribute or method
+3. reverse relation, by its query name: `user` for the users of a `Group`
+4. model attribute or method
 """
 
 from typing import Any, Protocol
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import Field, Model
+from django.db.models import Field, ForeignObjectRel, Model
 from django.forms.utils import pretty_name
 
 from ..columns import ColumnMeta, get_column, unwrap
@@ -35,23 +36,34 @@ class DataAttr(Protocol):
 
 
 class ModelField:
-    """Value of a model field. Choices are displayed, relations returned as objects (lists of them).
+    """Value of a model field or a reverse relation. Choices are displayed, relations returned as objects (lists of them).
 
     `order_field` is what the server list modes sort by in the database: the field itself when it
-    sorts as shown. Relations (shown as their str()) and choices (shown as their labels) have none;
-    a computed column can name a field that sorts as shown, e.g. `author__name`.
+    sorts as shown. Relations of any kind (shown as their str()) and choices (shown as their labels)
+    have none; a computed column can name a field that sorts as shown, e.g. `author__name`.
     """
 
-    def __init__(self, name: str, field: Field) -> None:
+    def __init__(self, name: str, field: Field | ForeignObjectRel) -> None:
         self.name = name
         self.field = field
-        self.label = str(field.verbose_name)
-        sorts_as_shown = field.concrete and not field.is_relation and not field.choices
-        self.order_field: str | None = name if sorts_as_shown else None
         self.component: CellComponent | str | None = None
+        self.order_field: str | None = None
+        if isinstance(field, ForeignObjectRel):
+            # the objects on the other side: one for a reverse one-to-one, else many
+            opts = field.related_model._meta
+            self.label = str(opts.verbose_name if field.one_to_one else opts.verbose_name_plural)
+        else:
+            self.label = str(field.verbose_name)
+            if field.concrete and not field.is_relation and not field.choices:  # sorts as shown
+                self.order_field = name
 
     def get_value(self, obj: Model) -> Any:
-        if self.field.many_to_many:
+        if isinstance(self.field, ForeignObjectRel):
+            accessor = self.field.get_accessor_name()
+            if self.field.one_to_one:  # the related object, None without one
+                return getattr(obj, accessor, None)
+            return list(getattr(obj, accessor).all())
+        if self.field.many_to_many or self.field.one_to_many:  # M2M, GenericRelation
             return list(getattr(obj, self.name).all())
         if self.field.choices:
             return getattr(obj, f"get_{self.field.name}_display")()
@@ -106,14 +118,17 @@ def get_data_attr(model: type[Model], name: str, sources: list[object]) -> DataA
         field = opts.get_field(name)
     except FieldDoesNotExist:
         field = None
-    # a reverse relation is not a Field: looked up like any other name
-    if isinstance(field, Field):
+    if field is not None and not isinstance(field, ForeignObjectRel):
         return ModelField(name, field)
     for source in sources:
         # looked up on the class: other attributes (e.g. the view's `render`) are not columns
         meta = get_column(getattr(type(source), name, None))
         if meta is not None:
             return DataSourceAttr(source, name, meta)
+    # after the view's columns, so a `@column` named like a reverse relation still wins;
+    # a hidden relation (related_name="+") has no accessor to read it with
+    if field is not None and not field.hidden:
+        return ModelField(name, field)
     if hasattr(model, name):
         return ModelAttr(model, name)
     raise AttributeError(f"Unable to lookup '{name}' on {opts.object_name}")

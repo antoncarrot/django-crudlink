@@ -12,6 +12,7 @@ class CellComponent(StrEnum):
 
     TEXT = "text"
     LINK = "link"
+    LINKS = "links"
     BOOL = "bool"
     TAGS = "tags"
 

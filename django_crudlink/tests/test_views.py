@@ -8,22 +8,25 @@ from unittest import mock
 import pytest
 from django.contrib.auth.backends import BaseBackend
 from django.contrib.auth.models import Group, Permission, User
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connection, models
 from django.http import Http404, HttpResponse
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
-from django.test.utils import CaptureQueriesContext
-from django.urls import resolve
+from django.test.utils import CaptureQueriesContext, isolate_apps
 from django.utils import translation
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy
+from django.views import View
 
 from django_crudlink import column
 from django_crudlink.helpers.columns import ModelField, get_data_attr
 from django_crudlink.json import CrudlinkJSONEncoder
 from django_crudlink.layout import Fieldset, Layout, Row, Span
-from django_crudlink.shared import Cell, PageComponent
-from django_crudlink.views import DetailModelView, ListMode, ListModelView
+from django_crudlink.shared import Cell, CellComponent, CellLink, PageComponent
+from django_crudlink.tests.urls import UserDetailView
+from django_crudlink.views import CrudViewMixin, DetailModelView, ListMode, ListModelView
 
 INERTIA = {"HTTP_X_INERTIA": "true"}
 # the deferred `data` prop of a list page, as Inertia loads it right after the first render
@@ -106,7 +109,14 @@ class ViewsTest(TestCase):
         self.assertEqual(bob["email"], {"component": "text", "props": {"text": "—"}})
         self.assertEqual(bob["full_name"], {"component": "text", "props": {"text": "Bob Zed"}})
         self.assertEqual(bob["is_staff"], {"component": "bool", "props": {"value": False}})
-        self.assertEqual(bob["groups"], {"component": "tags", "props": {"items": ["staff"]}})
+        # related objects link to their detail page: a group detail view is mounted
+        self.assertEqual(
+            bob["groups"],
+            {"component": "links", "props": {"items": [{"text": "staff", "href": f"/groups/{self.group.pk}/"}]}},
+        )
+        # only the `related_links` columns link: other relations stay tags
+        view = list_view(self.admin, model=User, related_links=())
+        self.assertEqual(view.get_cell(self.bob, view.get_data_attr("groups"), [self.group]), Cell.tags(["staff"]))
         # plain values the frontend sorts by
         self.assertEqual(
             data["rows"][0]["values"],
@@ -178,7 +188,8 @@ class ViewsTest(TestCase):
 
     def test_server_mode_uncounted(self) -> None:
         User.objects.bulk_create([User(username=f"user{i:02}") for i in range(30)])
-        with CaptureQueriesContext(connection) as queries:
+        # session + user + one page of users (26 rows) + their groups, prefetched
+        with self.assertNumQueries(4) as queries:
             data = table_data(self.client.get("/uncounted-users/?o=username", **DATA))
         # no COUNT(*): one extra row tells whether there is a next page
         self.assertFalse([query["sql"] for query in queries if "COUNT(" in query["sql"]])
@@ -207,6 +218,20 @@ class ViewsTest(TestCase):
         # the same permission check as the page; the login check is in test_login_required
         self.client.force_login(User.objects.create_user("nobody"))
         self.assertEqual(self.client.get("/server-users/", **DATA).status_code, 403)
+
+    def test_list_reverse_relation(self) -> None:
+        other = Group.objects.create(name="other")
+        User.objects.create_user("carl").groups.add(self.group, other)
+        # session + user + groups + their users, prefetched: not a query per group, "size" counts the prefetched ones
+        with self.assertNumQueries(4):
+            rows = table_data(self.client.get("/groups/", **DATA))["rows"]
+        # the base order, -pk: other, staff
+        users = [sorted(item["text"] for item in row["cells"]["user"]["props"]["items"]) for row in rows]
+        self.assertEqual(users, [["carl"], ["bob", "carl"]])
+        self.assertEqual([row["cells"]["size"]["props"]["value"] for row in rows], [1, 2])
+        # the reverse relation links to the user detail page
+        bob = {"text": "bob", "href": f"/users/{self.bob.pk}/"}
+        self.assertIn(bob, rows[1]["cells"]["user"]["props"]["items"])
 
     def test_list_ordering(self) -> None:
         # the sort column is only sent back, the frontend sorts. The rows come in the same order
@@ -251,7 +276,7 @@ class ViewsTest(TestCase):
         with mock.patch.object(Group._meta, "verbose_name", "API group"):
             columns = view.get_props().columns
         self.assertEqual([(column.name, column.label) for column in columns], [("__str__", "API group")])
-        self.assertEqual(view.get_data(view.get_data_attrs()).rows[0].cells["__str__"].props, {"text": "staff"})
+        self.assertEqual(view.get_data(view.get_data_attrs()).rows[0].cells["__str__"].props["text"], "staff")
 
     def test_column_sources(self) -> None:
         class Source:
@@ -332,7 +357,7 @@ class ViewsTest(TestCase):
         for language, label in (("en", "Users"), ("ru", "Пользователи")):
             with translation.override(language):
                 columns = page(self.client.get("/groups/", **INERTIA))["props"]["columns"]
-            self.assertEqual(columns[1]["label"], label, language)
+            self.assertEqual(columns[2]["label"], label, language)
 
     def test_custom_cell(self) -> None:
         User.objects.create_user("carl").groups.add(self.group)
@@ -342,13 +367,16 @@ class ViewsTest(TestCase):
         self.assertEqual(row["values"]["size"], 2)
 
     def test_list_display_links(self) -> None:
-        # the first column links to the detail page mounted next to the list
+        # the first column links to the detail page of the model
         cells = table_data(self.client.get("/groups/", **DATA))["rows"][0]["cells"]
         self.assertEqual(
             cells["name"], {"component": "link", "props": {"text": "staff", "href": f"/groups/{self.group.pk}/"}}
         )
+        # wherever the list is mounted: the server list of users links to the user detail page
+        row = table_data(self.client.get("/server-users/", **DATA))["rows"][0]
+        self.assertEqual(row["cells"]["username"]["props"]["href"], f"/users/{row['pk']}/")
         # other columns: an empty value links too; a column with a component keeps its cell
-        view = list_view(self.admin, model=User, list_display_links=("email",), url_namespace="user")
+        view = list_view(self.admin, model=User, list_display_links=("email",))
         username, email = view.get_data_attr("username"), view.get_data_attr("email")
         badge = mock.Mock(component="badge")
         badge.name = "email"
@@ -356,23 +384,99 @@ class ViewsTest(TestCase):
         self.assertEqual(view.get_cell(self.bob, username, "bob"), Cell.text("bob"))
         self.assertEqual(view.get_cell(self.bob, badge, 3), Cell("badge", {"value": 3}))
         # or none
-        view = list_view(self.admin, model=User, list_display_links=(), url_namespace="user")
+        view = list_view(self.admin, model=User, list_display_links=())
         self.assertEqual(view.get_cell(self.bob, email, ""), Cell.text("—"))
-        # without a detail url next to the list, cells stay text
-        cells = table_data(self.client.get("/server-users/", **DATA))["rows"][0]["cells"]
-        self.assertEqual(cells["username"]["component"], "text")
+        # without a detail page of the model, cells stay text
+        permission = Permission.objects.get(codename="view_user")
+        view = list_view(self.admin, model=Permission)
+        self.assertEqual(
+            view.get_cell(permission, view.get_data_attr("__str__"), str(permission)), Cell.text(str(permission))
+        )
 
-    def test_reverse(self) -> None:
-        # sibling urls are reversed in the current namespace, or in `url_namespace`
-        view = ListModelView(model=User)
-        request = RequestFactory().get("/users/")
-        request.resolver_match = resolve("/users/")
-        view.setup(request)
+    def test_url_names(self) -> None:
+        # pages find each other by url name, `<app_label>:<model_name>_<view_type>`, wherever they are mounted
+        view = list_view(self.admin, model=User)
+        self.assertEqual(view.get_url_name("detail"), "auth:user_detail")
         self.assertEqual(view.reverse("list"), "/users/")
         self.assertEqual(view.reverse("detail", self.bob.pk), f"/users/{self.bob.pk}/")
-        view.url_namespace = "server-users"
-        self.assertEqual(view.reverse("list"), "/server-users/")
-        self.assertIsNone(view.reverse("detail", self.bob.pk))  # not mounted
+        self.assertIsNone(list_view(self.admin, model=Permission).reverse("detail", 1))  # not mounted
+        # `url_names` for pages mounted under other names, the other pages keep theirs
+        view = list_view(self.admin, model=Group, url_names={"detail": "team"})
+        self.assertEqual(view.get_item_url(self.group), f"/teams/{self.group.pk}/")
+        self.assertEqual(view.reverse("list"), "/groups/")
+        # and a `related_links` mapping for related objects
+        view = list_view(self.admin, model=User, related_links={"groups": "team"})
+        cell = view.get_cell(self.bob, view.get_data_attr("groups"), [self.group])
+        self.assertEqual(cell, Cell.links([CellLink(text="staff", href=f"/teams/{self.group.pk}/")]))
+
+    def test_as_path(self) -> None:
+        # the route is named after the model of the view: from the class, or from the as_view() options
+        self.assertEqual(UserDetailView.as_path("<pk>/").name, "user_detail")
+        self.assertEqual(DetailModelView.as_path("<pk>/", model=Group).name, "group_detail")
+        self.assertEqual(ListModelView.as_path("", queryset=Permission.objects.all()).name, "permission_list")
+        with self.assertRaisesMessage(ImproperlyConfigured, "ListModelView is missing a model"):
+            ListModelView.as_path("")
+        # the options are checked as by as_view()
+        with pytest.raises(TypeError):
+            ListModelView.as_path("", model=User, bogus=1)
+
+        class PlainView(CrudViewMixin, View):
+            model = User
+
+        with self.assertRaisesMessage(ImproperlyConfigured, "PlainView has no view_type"):
+            PlainView.as_path("")
+
+    def test_link_column(self) -> None:
+        # a @column with the LINK (or LINKS) component links the related objects it returns
+        view = list_view(self.admin, model=User)
+        manager = mock.Mock(component=CellComponent.LINK)
+        manager.name = "manager"
+        href = f"/groups/{self.group.pk}/"
+        self.assertEqual(view.get_cell(self.bob, manager, self.group), Cell.link("staff", href))
+        self.assertEqual(
+            view.get_cell(self.bob, manager, [self.group]), Cell.links([CellLink(text="staff", href=href)])
+        )
+        # other values, as without a component
+        self.assertEqual(view.get_cell(self.bob, manager, "staff"), Cell.text("staff"))
+        self.assertEqual(view.get_cell(self.bob, manager, None), Cell.text("—"))
+        # a `related_links` mapping entry of the same name gives the url name
+        view = list_view(self.admin, model=User, related_links={"manager": "team"})
+        self.assertEqual(view.get_cell(self.bob, manager, self.group), Cell.link("staff", f"/teams/{self.group.pk}/"))
+
+    def test_raw_id_column(self) -> None:
+        # the raw id of a FK is a plain value: no object to load with the rows
+        view = list_view(self.admin, model=Permission, list_display=("codename", "content_type_id"))
+        attrs = view.get_data_attrs()
+        self.assertFalse(view.optimize_queryset(Permission.objects.all(), attrs).query.select_related)
+        row = view.get_data(attrs).rows[0]
+        self.assertIsInstance(row.values["content_type_id"], int)
+
+    def test_instance_namespace(self) -> None:
+        # pages mounted again in another instance namespace ("staff") link within their own copy
+        rows = table_data(self.client.get("/staff/users/", **DATA))["rows"]
+        bob = next(row["cells"] for row in rows if row["pk"] == str(self.bob.pk))
+        self.assertEqual(bob["username"]["props"]["href"], f"/staff/users/{self.bob.pk}/")
+        self.assertEqual(bob["groups"]["props"]["items"][0]["href"], f"/staff/groups/{self.group.pk}/")
+        self.assertEqual(
+            page(self.client.get(f"/staff/users/{self.bob.pk}/", **INERTIA))["props"]["listUrl"], "/staff/users/"
+        )
+        # the default instance keeps its urls
+        self.assertEqual(page(self.client.get(f"/users/{self.bob.pk}/", **INERTIA))["props"]["listUrl"], "/users/")
+
+    def test_reverse_relation_lookup(self) -> None:
+        # a reverse relation comes after the view's columns: a @column of the same name wins
+        class Source:
+            @column(label="Who")
+            def user(self, group: Group) -> str:
+                return "who"
+
+        attr = get_data_attr(Group, "user", [Source()])
+        self.assertEqual((attr.label, attr.get_value(self.group)), ("Who", "who"))
+        # else the relation: the users of the group
+        self.assertEqual(get_data_attr(Group, "user", []).get_value(self.group), [self.bob])
+        # a hidden relation (related_name="+", here from the auto-created M2M table) has no accessor: no column
+        with pytest.raises(AttributeError, match="Unable to lookup"):
+            get_data_attr(Group, "User_groups+", [])
 
     def test_detail(self) -> None:
         response = page(self.client.get(f"/users/{self.bob.pk}/", **INERTIA))
@@ -384,7 +488,10 @@ class ViewsTest(TestCase):
         self.assertEqual(
             props["fields"]["username"], {"label": "Username", "cell": {"component": "text", "props": {"text": "bob"}}}
         )
-        self.assertEqual(props["fields"]["groups"]["cell"], {"component": "tags", "props": {"items": ["staff"]}})
+        self.assertEqual(
+            props["fields"]["groups"]["cell"],
+            {"component": "links", "props": {"items": [{"text": "staff", "href": f"/groups/{self.group.pk}/"}]}},
+        )
         # the @column of the view works here too
         self.assertEqual(
             props["fields"]["full_name"],
@@ -403,9 +510,11 @@ class ViewsTest(TestCase):
     def test_detail_layout(self) -> None:
         # a layout without fields: the layout picks the fields
         props = page(self.client.get(f"/groups/{self.group.pk}/", **INERTIA))["props"]
-        self.assertEqual(list(props["fields"]), ["name", "permissions"])
+        self.assertEqual(list(props["fields"]), ["name", "user", "permissions"])
         self.assertEqual([node["type"] for node in props["layout"]["children"]], ["row", "field"])
-        # neither: all model fields, except auto created (the pk)
+        # the reverse relation, labelled with the verbose name of its model
+        self.assertEqual(props["fields"]["user"]["label"], "Users")
+        # neither: all model fields, except auto created (the pk) and reverse relations
         self.assertEqual([attr.name for attr in DetailModelView(model=Group).get_fields()], ["name", "permissions"])
 
     def test_detail_queryset(self) -> None:
@@ -421,6 +530,13 @@ class ViewsTest(TestCase):
         with self.assertRaisesMessage(ImproperlyConfigured, "DetailModelView needs a `pk` url kwarg"):
             view.get_object()
 
+    def test_related_without_detail_view(self) -> None:
+        self.group.permissions.add(Permission.objects.get(codename="view_user"))
+        props = page(self.client.get(f"/groups/{self.group.pk}/", **INERTIA))["props"]
+        # in `related_links`, but Permission has no detail page: tags
+        cell = props["fields"]["permissions"]["cell"]
+        self.assertEqual((cell["component"], len(cell["props"]["items"])), ("tags", 1))
+
     def test_permissions(self) -> None:
         user = User.objects.create_user("viewer")
         user.user_permissions.add(Permission.objects.get(codename="view_user"))
@@ -431,10 +547,18 @@ class ViewsTest(TestCase):
         # without permission a missing group is a 403 too: the status doesn't tell which groups exist
         for url in ("/groups/", f"/groups/{self.group.pk}/", "/groups/999/"):
             self.assertEqual(self.client.get(url).status_code, 403, url)
+        # the groups of a user are shown, but not linked
+        rows = {row["pk"]: row for row in table_data(self.client.get("/users/", **DATA))["rows"]}
+        self.assertEqual(
+            rows[str(self.bob.pk)]["cells"]["groups"], {"component": "tags", "props": {"items": ["staff"]}}
+        )
         # change permission grants view
         user.user_permissions.add(Permission.objects.get(codename="change_group"))
         for url, status in (("/groups/", 200), (f"/groups/{self.group.pk}/", 200), ("/groups/999/", 404)):
             self.assertEqual(self.client.get(url).status_code, status, url)
+        rows = {row["pk"]: row for row in table_data(self.client.get("/users/", **DATA))["rows"]}
+        groups = rows[str(self.bob.pk)]["cells"]["groups"]["props"]["items"]
+        self.assertEqual(groups, [{"text": "staff", "href": f"/groups/{self.group.pk}/"}])  # links
 
     @override_settings(
         AUTHENTICATION_BACKENDS=[
@@ -522,3 +646,34 @@ class LayoutTest(SimpleTestCase):
             Layout(("username", "email"))
         with self.assertRaisesMessage(TypeError, "The first argument of a Fieldset is its label"):
             Fieldset(Row("username"))
+
+
+class GenericRelationsTest(SimpleTestCase):
+    @isolate_apps("django_crudlink")
+    def test_list_columns(self) -> None:
+        class Tag(models.Model):
+            content_type = models.ForeignKey(ContentType, models.CASCADE)
+            object_id = models.PositiveIntegerField()
+            target = GenericForeignKey()
+
+            def __str__(self) -> str:
+                return f"tag {self.pk}"
+
+        class Note(models.Model):
+            tags = GenericRelation(Tag)
+
+            def __str__(self) -> str:
+                return f"note {self.pk}"
+
+        view = ListModelView()
+        tag_attrs = {name: get_data_attr(Tag, name, []) for name in ("content_type", "target")}
+        tags = view.optimize_queryset(Tag.objects.all(), tag_attrs)
+        notes = view.optimize_queryset(Note.objects.all(), {"tags": get_data_attr(Note, "tags", [])})
+        # select_related only follows concrete FKs: the generic relations are prefetched
+        self.assertEqual(tags.query.select_related, {"content_type": {}})
+        self.assertEqual(tags._prefetch_related_lookups, ("target",))
+        self.assertFalse(notes.query.select_related)
+        self.assertEqual(notes._prefetch_related_lookups, ("tags",))
+        # and the database can't sort by them
+        self.assertIsNone(tag_attrs["target"].order_field)
+        self.assertIsNone(get_data_attr(Note, "tags", []).order_field)
